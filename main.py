@@ -31,7 +31,7 @@ def create_wav_header(sample_rate=24000, bits_per_sample=16, channels=1):
 
 async def main():
     # Initialize the model inside a function
-    m = OrpheusModel("medium-3b")
+    m = OrpheusModel()
     # Example usage
 
     requests = [
@@ -52,6 +52,7 @@ async def main():
         # ],
         [
             "I drove past our old house today when I was back at home for the funeral.",
+            " It was a looooooonnnnngggg drive."
             " Another short one. The shutters are blue now.",
             " Funny how something so small can make it feel like a stranger’s place.\n",
             " I kept his jacket, even though it doesn’t fit.",

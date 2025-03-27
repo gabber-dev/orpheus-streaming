@@ -3,3 +3,5 @@ transformers
 numpy
 snac~=1.2.1
 torch
+protobuf~=6.30.2
+gradio==5.23.1

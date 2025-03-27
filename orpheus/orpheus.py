@@ -1,5 +1,4 @@
 import asyncio
-import torch
 from vllm import (
     AsyncLLMEngine,
     AsyncEngineArgs,
@@ -20,9 +19,7 @@ from .prompt_window import PromptWindow, PromptWindowInference
 
 
 class OrpheusModel:
-    def __init__(self, model_name, dtype=torch.bfloat16):
-        self.model_name = model_name
-        self.dtype = dtype
+    def __init__(self):
         self.engine = self._setup_engine()
         self.available_voices = ["zoe", "zac", "jess", "leo", "mia", "julia", "leah"]
         t = AutoTokenizer.from_pretrained("./data/finetune-fp16")

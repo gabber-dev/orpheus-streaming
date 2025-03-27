@@ -1,0 +1,56 @@
+syntax = "proto3";
+package tts;
+
+// Top-level message wrapper with oneof to handle all message types
+message SendMessage {
+  oneof payload {
+    StartSession start_session = 1;
+    PushText push_text = 2;
+    Eos eos = 3;
+  }
+}
+
+message ReceiveMessage {
+  oneof payload {
+    AudioData audio_data = 1;
+    Finished finished = 2;
+    Error error = 3;
+  }
+}
+
+// Client-to-server messages
+message StartSession {
+  string voice = 1; // Max 255 chars enforced by server
+  string id = 2;   // Max 255 chars enforced by server
+}
+
+message PushText {
+  string session = 1;
+  string text = 2;
+}
+
+message Eos {
+  string session = 1;
+}
+
+// Server-to-client messages
+message AudioData {
+  string session = 1;
+  string audio = 2;
+  int32 sample_rate = 3;
+  AudioType audio_type = 4;
+  int32 channel_count = 5;
+}
+
+message Finished {
+  string session = 1;
+}
+
+enum AudioType {
+  AUDIOTYPE_PCM16LE = 0;
+}
+
+message Error {
+  string session = 1;
+  string message = 2;
+}

@@ -1,3 +1,3 @@
-from .orpheus import OrpheusModel
+from .orpheus import OrpheusModel, SessionHandle
 
-__all__ = ["OrpheusModel"]
+__all__ = ["OrpheusModel", "SessionHandle"]

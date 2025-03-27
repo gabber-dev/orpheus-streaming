@@ -2,6 +2,7 @@ import asyncio
 import torch
 from snac import SNAC
 import numpy as np
+from typing import Any
 
 snac_device = "cuda"
 snac = SNAC.from_pretrained("hubertsiuzdak/snac_24khz").eval()
@@ -202,3 +203,29 @@ class Decoder:
 
     def get_used_tokens(self):
         return self._used_tokens
+
+
+# This is the magic number during testing that we use to determine if a frame is loud enough
+# to possibly contain speech. It's very conservative.
+MAGIC_NUMBER_THRESHOLD = 0.004
+
+
+class BasicAudioEnergyFilter:
+    def __init__(self, *, cooldown_seconds: float = 1, sample_rate: int):
+        self._cooldown_seconds = cooldown_seconds
+        self._cooldown = cooldown_seconds
+        self._sample_rate = sample_rate
+
+    def push_frame(self, frame: np.ndarray[Any, np.dtype[np.int16]]) -> bool:
+        float_arr = frame.astype(np.float32) / 32768.0
+        rms = np.sqrt(np.mean(np.square(float_arr)))
+        if rms > MAGIC_NUMBER_THRESHOLD:
+            self._cooldown = self._cooldown_seconds
+            return True
+
+        duration_seconds = frame.shape[0] / self._sample_rate
+        self._cooldown -= duration_seconds
+        if self._cooldown > 0:
+            return True
+
+        return False
