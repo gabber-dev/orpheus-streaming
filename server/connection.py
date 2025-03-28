@@ -18,18 +18,6 @@ from .proto_generated.tts_pb2 import (
 )
 
 
-class Router:
-    def __init__(self, *, model: BaseModel, health: Health):
-        self._health = health
-        self._model = model
-
-    async def add_connection(self, ws: web.WebSocketResponse, internal: bool):
-        conn = WebsocketConnection(
-            ws=ws, health=self._health, model=self._model, internal=internal
-        )
-        return conn
-
-
 class WebsocketConnection:
     def __init__(
         self,
@@ -173,7 +161,7 @@ class LocalWebsocketSession(WebsocketSession):
 
         send_task = asyncio.create_task(send_loop())
         async for msg in self._session_handle:
-            print("NEIL got audio", len(msg))
+            print("NEIL got audio", self._start_msg.session)
             audio_msg = ReceiveMessage(
                 session=self._start_msg.session,
                 audio_data=AudioData(

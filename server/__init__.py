@@ -1,5 +1,4 @@
 from .server import WebSocketServer
-from .router import Router
-from .health import Health
+from .health import Health, RedisHealth
 
-__all__ = ["WebSocketServer", "Router", "Health"]
+__all__ = ["WebSocketServer", "Health", "RedisHealth"]

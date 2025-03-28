@@ -1,7 +1,9 @@
 import asyncio
 from aiohttp import web
 import logging
-from .router import Router
+from .connection import WebsocketConnection
+from .health import Health
+from models import BaseModel
 
 
 class WebSocketServer:
@@ -13,19 +15,21 @@ class WebSocketServer:
         internal_connection_base_url: str,
         public_listen_ip: str,
         public_listen_port: int,
-        router: Router,
+        health: Health,
+        model: BaseModel,
     ):
         """Initialize the WebSocket server with host and port."""
         self.internal_listening_ip = internal_listen_ip
         self.internal_listening_port = internal_listen_port
+        self.internal_connection_base_url = internal_connection_base_url
         self.public_listening_ip = public_listen_ip
         self.public_listening_port = public_listen_port
-        self.internal_connection_base_url = internal_connection_base_url
+        self._model = model
+        self._health = health
         self.internal_app = web.Application()
         self.public_app = web.Application()
         self.setup_routes()
         self.logger = logging.getLogger(__name__)
-        self.router = router
         logging.basicConfig(level=logging.INFO)
 
     def setup_routes(self):
@@ -38,8 +42,11 @@ class WebSocketServer:
         ws = web.WebSocketResponse()
         await ws.prepare(request)
         self.logger.info(f"Client connected from {request.remote}")
-        router_conn = await self.router.add_connection(ws, internal=True)
-        await router_conn.wait_for_complete()
+        conn = WebsocketConnection(
+            ws=ws, health=self._health, model=self._model, internal=True
+        )
+        await conn.wait_for_complete()
+        print("NEIL conn complete")
         return ws
 
     async def public_websocket_handler(self, request: web.Request):
@@ -47,9 +54,11 @@ class WebSocketServer:
         ws = web.WebSocketResponse()
         await ws.prepare(request)
         self.logger.info(f"Client connected from {request.remote}")
-        router_conn = await self.router.add_connection(ws, internal=False)
-        await router_conn.wait_for_complete()
-        print("NEIL router_conn complete")
+        conn = WebsocketConnection(
+            ws=ws, health=self._health, model=self._model, internal=False
+        )
+        await conn.wait_for_complete()
+        print("NEIL conn complete")
         return ws
 
     async def start_server(self):

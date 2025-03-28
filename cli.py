@@ -2,9 +2,8 @@ import asyncio
 import argparse
 import sys
 
-from server import WebSocketServer, Router, Health
-from models.orpheus import OrpheusModel
-from models.mock import MockModel
+from server import WebSocketServer, RedisHealth
+from models import BaseModel, orpheus, mock
 
 
 def server_command(args):
@@ -17,32 +16,36 @@ def server_command(args):
     print(f"Session Capacity: {args.session_capacity}")
     print(f"Model Directory: {args.model_directory}")
     print(f"Internal connection base url: {args.internal_connection_base_url}")
-    # model = OrpheusModel(model_directory=args.model_directory)
-    model = MockModel()
-    health = Health(
+    print(f"Mock: {args.mock}")
+    print(f"Redis Host: {args.redis_host}")
+    print(f"Redis Port: {args.redis_port}")
+    print(f"Redis DB: {args.redis_db}")
+
+    model: BaseModel
+    if args.mock:
+        model = mock.MockModel()
+    else:
+        model = orpheus.OrpheusModel(model_directory=args.model_directory)
+
+    health = RedisHealth(
         max_sessions=args.session_capacity,
         internal_connection_base_url=args.internal_connection_base_url,
         internal_listen_port=args.internal_listen_port,
+        redis_db=args.redis_db,
+        redis_host=args.redis_host,
+        redis_port=args.redis_port,
     )
-    router = Router(model=model, health=health)
     server = WebSocketServer(
         public_listen_ip=args.public_listen_ip,
         public_listen_port=args.public_listen_port,
         internal_listen_ip=args.internal_listen_ip,
         internal_listen_port=args.internal_listen_port,
         internal_connection_base_url=args.internal_connection_base_url,
-        router=router,
+        health=health,
+        model=model,
     )
     server.run()
     # Add your server implementation here
-
-
-def inference_command(args):
-    """Handle inference command"""
-    print("Running inference with:")
-    print(f"Voice: {args.voice}")
-    print(f"Text: {args.text}")
-    # Add your inference implementation here
 
 
 def main():
@@ -88,20 +91,28 @@ def main():
         default="./data/finetune-fp16",
         help="Directory containing models",
     )
-
-    # Inference command parser
-    inference_parser = subparsers.add_parser("inference", help="Run inference")
-    inference_parser.add_argument(
-        "--voice", type=str, required=True, help="Voice to use for inference"
+    server_parser.add_argument(
+        "--mock",
+        action="store_true",
+        help="Use a mock model instead of the real model",
     )
-    inference_parser.add_argument(
-        "--text", type=str, required=True, help="Text to process"
+    server_parser.add_argument(
+        "--redis_host",
+        type=str,
+        default=0.1,
+        help="Delay for redis load balancing",
     )
-
-    # Gradio command parser
-    gradio_parser = subparsers.add_parser("gradio", help="Start Gradio interface")
-    gradio_parser.add_argument(
-        "--port", type=int, default=7860, help="Port for Gradio interface"
+    server_parser.add_argument(
+        "--redis_port",
+        type=int,
+        default=6379,
+        help="Port for redis load balancing",
+    )
+    server_parser.add_argument(
+        "--redis_db",
+        type=int,
+        default=0,
+        help="Database for redis load balancing",
     )
 
     # Parse arguments
@@ -111,8 +122,6 @@ def main():
     if args.command == "server":
         print("here")
         server_command(args)
-    elif args.command == "inference":
-        inference_command(args)
     else:
         parser.print_help()
         sys.exit(1)
