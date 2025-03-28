@@ -3,47 +3,43 @@ package tts;
 
 // Top-level message wrapper with oneof to handle all message types
 message SendMessage {
+  string session = 1;
   oneof payload {
-    StartSession start_session = 1;
-    PushText push_text = 2;
-    Eos eos = 3;
+    StartSession start_session = 2;
+    PushText push_text = 3;
+    Eos eos = 4;
   }
 }
 
 message ReceiveMessage {
+  string session = 1;
   oneof payload {
-    AudioData audio_data = 1;
-    Finished finished = 2;
-    Error error = 3;
+    AudioData audio_data = 2;
+    Finished finished = 3;
+    Error error = 4;
   }
 }
 
-// Client-to-server messages
 message StartSession {
-  string voice = 1; // Max 255 chars enforced by server
-  string id = 2;   // Max 255 chars enforced by server
+  string voice = 1;
 }
 
 message PushText {
-  string session = 1;
   string text = 2;
 }
 
 message Eos {
-  string session = 1;
 }
 
 // Server-to-client messages
 message AudioData {
-  string session = 1;
-  string audio = 2;
-  int32 sample_rate = 3;
-  AudioType audio_type = 4;
-  int32 channel_count = 5;
+  bytes audio = 1;
+  int32 sample_rate = 2;
+  AudioType audio_type = 3;
+  int32 channel_count = 4;
 }
 
 message Finished {
-  string session = 1;
 }
 
 enum AudioType {

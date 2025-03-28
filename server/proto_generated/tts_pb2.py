@@ -13,29 +13,29 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\ttts.proto\x12\x03tts\"\x81\x01\n\x0bSendMessage\x12*\n\rstart_session\x18\x01 \x01(\x0b\x32\x11.tts.StartSessionH\x00\x12\"\n\tpush_text\x18\x02 \x01(\x0b\x32\r.tts.PushTextH\x00\x12\x17\n\x03\x65os\x18\x03 \x01(\x0b\x32\x08.tts.EosH\x00\x42\t\n\x07payload\"\x81\x01\n\x0eReceiveMessage\x12$\n\naudio_data\x18\x01 \x01(\x0b\x32\x0e.tts.AudioDataH\x00\x12!\n\x08\x66inished\x18\x02 \x01(\x0b\x32\r.tts.FinishedH\x00\x12\x1b\n\x05\x65rror\x18\x03 \x01(\x0b\x32\n.tts.ErrorH\x00\x42\t\n\x07payload\")\n\x0cStartSession\x12\r\n\x05voice\x18\x01 \x01(\t\x12\n\n\x02id\x18\x02 \x01(\t\")\n\x08PushText\x12\x0f\n\x07session\x18\x01 \x01(\t\x12\x0c\n\x04text\x18\x02 \x01(\t\"\x16\n\x03\x45os\x12\x0f\n\x07session\x18\x01 \x01(\t\"{\n\tAudioData\x12\x0f\n\x07session\x18\x01 \x01(\t\x12\r\n\x05\x61udio\x18\x02 \x01(\t\x12\x13\n\x0bsample_rate\x18\x03 \x01(\x05\x12\"\n\naudio_type\x18\x04 \x01(\x0e\x32\x0e.tts.AudioType\x12\x15\n\rchannel_count\x18\x05 \x01(\x05\"\x1b\n\x08\x46inished\x12\x0f\n\x07session\x18\x01 \x01(\t\")\n\x05\x45rror\x12\x0f\n\x07session\x18\x01 \x01(\t\x12\x0f\n\x07message\x18\x02 \x01(\t*\"\n\tAudioType\x12\x15\n\x11\x41UDIOTYPE_PCM16LE\x10\x00\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\ttts.proto\x12\x03tts\"\x92\x01\n\x0bSendMessage\x12\x0f\n\x07session\x18\x01 \x01(\t\x12*\n\rstart_session\x18\x02 \x01(\x0b\x32\x11.tts.StartSessionH\x00\x12\"\n\tpush_text\x18\x03 \x01(\x0b\x32\r.tts.PushTextH\x00\x12\x17\n\x03\x65os\x18\x04 \x01(\x0b\x32\x08.tts.EosH\x00\x42\t\n\x07payload\"\x92\x01\n\x0eReceiveMessage\x12\x0f\n\x07session\x18\x01 \x01(\t\x12$\n\naudio_data\x18\x02 \x01(\x0b\x32\x0e.tts.AudioDataH\x00\x12!\n\x08\x66inished\x18\x03 \x01(\x0b\x32\r.tts.FinishedH\x00\x12\x1b\n\x05\x65rror\x18\x04 \x01(\x0b\x32\n.tts.ErrorH\x00\x42\t\n\x07payload\"\x1d\n\x0cStartSession\x12\r\n\x05voice\x18\x01 \x01(\t\"\x18\n\x08PushText\x12\x0c\n\x04text\x18\x02 \x01(\t\"\x05\n\x03\x45os\"j\n\tAudioData\x12\r\n\x05\x61udio\x18\x01 \x01(\x0c\x12\x13\n\x0bsample_rate\x18\x02 \x01(\x05\x12\"\n\naudio_type\x18\x03 \x01(\x0e\x32\x0e.tts.AudioType\x12\x15\n\rchannel_count\x18\x04 \x01(\x05\"\n\n\x08\x46inished\")\n\x05\x45rror\x12\x0f\n\x07session\x18\x01 \x01(\t\x12\x0f\n\x07message\x18\x02 \x01(\t*\"\n\tAudioType\x12\x15\n\x11\x41UDIOTYPE_PCM16LE\x10\x00\x62\x06proto3')
 
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, globals())
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'tts_pb2', globals())
 if _descriptor._USE_C_DESCRIPTORS == False:
 
   DESCRIPTOR._options = None
-  _AUDIOTYPE._serialized_start=589
-  _AUDIOTYPE._serialized_end=623
+  _AUDIOTYPE._serialized_start=543
+  _AUDIOTYPE._serialized_end=577
   _SENDMESSAGE._serialized_start=19
-  _SENDMESSAGE._serialized_end=148
-  _RECEIVEMESSAGE._serialized_start=151
-  _RECEIVEMESSAGE._serialized_end=280
-  _STARTSESSION._serialized_start=282
-  _STARTSESSION._serialized_end=323
-  _PUSHTEXT._serialized_start=325
-  _PUSHTEXT._serialized_end=366
-  _EOS._serialized_start=368
-  _EOS._serialized_end=390
-  _AUDIODATA._serialized_start=392
-  _AUDIODATA._serialized_end=515
-  _FINISHED._serialized_start=517
-  _FINISHED._serialized_end=544
-  _ERROR._serialized_start=546
-  _ERROR._serialized_end=587
+  _SENDMESSAGE._serialized_end=165
+  _RECEIVEMESSAGE._serialized_start=168
+  _RECEIVEMESSAGE._serialized_end=314
+  _STARTSESSION._serialized_start=316
+  _STARTSESSION._serialized_end=345
+  _PUSHTEXT._serialized_start=347
+  _PUSHTEXT._serialized_end=371
+  _EOS._serialized_start=373
+  _EOS._serialized_end=378
+  _AUDIODATA._serialized_start=380
+  _AUDIODATA._serialized_end=486
+  _FINISHED._serialized_start=488
+  _FINISHED._serialized_end=498
+  _ERROR._serialized_start=500
+  _ERROR._serialized_end=541
 # @@protoc_insertion_point(module_scope)
