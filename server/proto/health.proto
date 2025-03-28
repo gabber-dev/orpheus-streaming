@@ -4,8 +4,8 @@ package server_health;
 
 // Message representing the server's health status
 message ServerHealth {
-  string host = 1;
-  uint32 port = 2;
+  string internal_connection_url = 1;
+  uint32 internal_connection_port = 2;
   uint32 sessions = 3;
   uint32 max_sessions = 4;
 }

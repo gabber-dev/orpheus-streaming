@@ -2,7 +2,7 @@ import asyncio
 import argparse
 import sys
 
-from server import WebSocketServer, Router
+from server import WebSocketServer, Router, Health
 from models.orpheus import OrpheusModel
 from models.mock import MockModel
 
@@ -19,7 +19,12 @@ def server_command(args):
     print(f"Internal connection base url: {args.internal_connection_base_url}")
     # model = OrpheusModel(model_directory=args.model_directory)
     model = MockModel()
-    router = Router(model=model)
+    health = Health(
+        max_sessions=args.session_capacity,
+        internal_connection_base_url=args.internal_connection_base_url,
+        internal_listen_port=args.internal_listen_port,
+    )
+    router = Router(model=model, health=health)
     server = WebSocketServer(
         public_listen_ip=args.public_listen_ip,
         public_listen_port=args.public_listen_port,

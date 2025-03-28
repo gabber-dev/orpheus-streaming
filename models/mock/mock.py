@@ -24,62 +24,38 @@ class MockModel(BaseModel):
 
 class MockSessionHandle(BaseSessionHandle):
     def __init__(self):
-        self._input_queue = asyncio.Queue()
-        self._output_queue = asyncio.Queue()
+        self._input_queue = asyncio.Queue[str | None]()
+        self._output_queue = asyncio.Queue[bytes | None]()
         self._run_task = asyncio.create_task(self.run())
 
     async def run(self):
         while True:
             prompt = await self._input_queue.get()
+            print("NEIL prompt", prompt)
             if prompt is None:
                 break
 
-            # Mock processing: return zeros regardless of input
-            await asyncio.sleep(0.1)  # Simulate processing delay
-            await self._output_queue.put(b"\x00" * 1024)  # 1KB of zeros
+            # Mock processing: simulate some work and return zeros regardless of input
+            await asyncio.sleep(0.1)
+            data = b"\x00" * 1024
+            self._output_queue.put_nowait(data)
 
         await self._output_queue.put(None)
 
     def push(self, text: str):
-        """Add text to the input queue"""
         self._input_queue.put_nowait(text)
 
     def eos(self):
-        """Signal end of session"""
         self._input_queue.put_nowait(None)
 
     async def wait_for_complete(self):
-        """Wait for all processing to complete"""
         await self._run_task
 
     def __aiter__(self) -> AsyncIterator[bytes]:
-        """Return self as an async iterator"""
         return self
 
     async def __anext__(self) -> bytes:
-        """Get the next output chunk"""
         output = await self._output_queue.get()
         if output is None:
             raise StopAsyncIteration
         return output
-
-    # Additional mock methods
-    async def _start_inference(self, prompt):
-        # Mock inference job that just returns zeros
-        class MockInferenceJob:
-            finished = True
-
-            async def output_audio_stream(self):
-                yield b"\x00" * 1024
-                yield None
-
-            async def output_token_stream(self):
-                yield 0  # Mock token
-                yield None
-
-        return MockInferenceJob()
-
-    async def _inference_task(self, job):
-        async for audio in job.output_audio_stream():
-            if audio is not None:
-                await self._output_queue.put(audio)

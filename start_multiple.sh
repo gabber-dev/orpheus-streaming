@@ -14,6 +14,7 @@ trap cleanup SIGINT
 # Start Server 1 (ports 7000, 7001) with green output
 stdbuf -o0 python3 -u cli.py server \
     --public_listen_port 7000 \
+    --session_capacity 10 \
     --internal_listen_port 7001 \
     2>&1 | stdbuf -o0 sed 's/^/[server-1] /' | while IFS= read -r line; do 
     echo -e "\033[32m$line\033[0m"
