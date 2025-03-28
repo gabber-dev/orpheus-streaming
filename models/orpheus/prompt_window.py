@@ -100,7 +100,6 @@ class PromptWindowInference:
         self.tokenizer = tokenizer
 
     def tokenize(self) -> list[int]:
-        global first_inference
         context_text_prompt = self.context_text
         new_text_prompt = self.new_text
         if self.voice is not None:
