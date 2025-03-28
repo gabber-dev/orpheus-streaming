@@ -1,5 +1,5 @@
 import asyncio
-from orpheus import OrpheusModel
+from models.orpheus import OrpheusModel
 import time
 import struct
 

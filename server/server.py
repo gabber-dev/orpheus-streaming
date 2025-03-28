@@ -13,6 +13,7 @@ class WebSocketServer:
         internal_connection_base_url: str,
         public_listen_ip: str,
         public_listen_port: int,
+        router: Router,
     ):
         """Initialize the WebSocket server with host and port."""
         self.internal_listening_ip = internal_listen_ip
@@ -24,7 +25,7 @@ class WebSocketServer:
         self.public_app = web.Application()
         self.setup_routes()
         self.logger = logging.getLogger(__name__)
-        self.router = Router()
+        self.router = router
         logging.basicConfig(level=logging.INFO)
 
     def setup_routes(self):
@@ -48,6 +49,7 @@ class WebSocketServer:
         self.logger.info(f"Client connected from {request.remote}")
         router_conn = await self.router.add_connection(ws, internal=False)
         await router_conn.wait_for_complete()
+        print("NEIL router_conn complete")
         return ws
 
     async def start_server(self):

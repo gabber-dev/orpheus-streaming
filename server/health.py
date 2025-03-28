@@ -1,4 +1,4 @@
-from proto_generated.health_pb2 import ServerHealth
+from .proto_generated.health_pb2 import ServerHealth
 
 
 class Health:

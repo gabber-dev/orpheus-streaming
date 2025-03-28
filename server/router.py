@@ -1,22 +1,26 @@
 import asyncio
+import logging
+
 import aiohttp
-from aiohttp import web, WSMessage
-from orpheus import OrpheusModel, SessionHandle
+from aiohttp import WSMessage, web
+
+from models import BaseModel, BaseSessionHandle
+
 from .health import Health
+from .proto_generated.health_pb2 import ServerHealth
 from .proto_generated.tts_pb2 import (
-    SendMessage,
     Eos,
     Error,
     PushText,
+    SendMessage,
     StartSession,
 )
-from .proto_generated.health_pb2 import ServerHealth
 
 
 class Router:
-    def __init__(self):
+    def __init__(self, *, model: BaseModel):
         self._health = Health()
-        self._model = OrpheusModel()
+        self._model = model
 
     async def add_connection(self, ws: web.WebSocketResponse, internal: bool):
         conn = WebsocketConnection(ws=ws, health=self._health, model=self._model)
@@ -24,17 +28,16 @@ class Router:
 
 
 class WebsocketConnection:
-    def __init__(
-        self, *, ws: web.WebSocketResponse, health: Health, model: OrpheusModel
-    ):
+    def __init__(self, *, ws: web.WebSocketResponse, health: Health, model: BaseModel):
         self._health = health
         self._output_queue: asyncio.Queue = asyncio.Queue()
         self._ws = ws
-        self._session_local: dict[str, SessionHandle] = {}
+        self._session_local: dict[str, BaseSessionHandle] = {}
         self._session_remote: dict[str, MessageForwarder] = {}
         self._receive_task = asyncio.create_task(self.receive_task())
         self._session_tasks = set[asyncio.Task]()
         self._model = model
+        self._closed = False
 
     async def receive_task(self):
         async for msg in self._ws:
@@ -49,6 +52,7 @@ class WebsocketConnection:
                 pass
 
     async def _handle_start_session(self, original: WSMessage, msg: StartSession):
+        logging.info(f"Creating session {msg.id}")
         local_server = await self._health.get_local_server()
         if local_server.sessions < local_server.max_sessions:
             session_handle = self._model.create_session(msg.id)
@@ -80,12 +84,20 @@ class WebsocketConnection:
                 Error(session=id, message="Session not found").SerializeToString()
             )
 
-    async def _run_session(self, handle: SessionHandle):
+    async def _run_session(self, handle: BaseSessionHandle):
         async for data in handle:
             pass
 
     async def wait_for_complete(self):
-        pass
+        for task in self._session_tasks:
+            await task
+
+        await self._receive_task
+
+    async def close(self):
+        self._closed = True
+        await self._ws.close()
+        # TODO implement session migration after timeout
 
 
 class MessageForwarder:

@@ -16,20 +16,22 @@ from .constants import (
     SNAC_TOKENS_PER_SECOND,
 )
 from .prompt_window import PromptWindow, PromptWindowInference
+from ..base import BaseModel, BaseSessionHandle
 
 
-class OrpheusModel:
-    def __init__(self):
+class OrpheusModel(BaseModel):
+    def __init__(self, *, model_directory: str):
+        self._model_directory = model_directory
         self.engine = self._setup_engine()
         self.available_voices = ["zoe", "zac", "jess", "leo", "mia", "julia", "leah"]
-        t = AutoTokenizer.from_pretrained("./data/finetune-fp16")
+        t = AutoTokenizer.from_pretrained(model_directory)
         self.tokenizer = t
         self._sessions: dict[str, SessionHandle] = {}
         self._closed = False
 
     def _setup_engine(self):
         engine_args = AsyncEngineArgs(
-            model="./data/finetune-fp16",
+            model=self._model_directory,
             max_model_len=8192,
             gpu_memory_utilization=0.8,
             enforce_eager=True,
@@ -49,11 +51,11 @@ class OrpheusModel:
         self._sessions[session_id] = session
         return session
 
-    async def close(self):
+    def close(self):
         self._closed = True
 
 
-class SessionHandle:
+class SessionHandle(BaseSessionHandle):
     class State(Enum):
         WARMUP = 0
         RUNNING = 1
@@ -164,16 +166,6 @@ class SessionHandle:
         if audio is None:
             raise StopAsyncIteration
         return audio
-
-
-@dataclass
-class SessionStats:
-    tftt: float
-
-    output_tps: float
-    input_tps: float
-
-    avg_audio_tokens_per_text_token: float
 
 
 class InferenceJob:

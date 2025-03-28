@@ -1,9 +1,10 @@
-#!/usr/bin/env python3
-
+import asyncio
 import argparse
 import sys
 
-from server import WebSocketServer
+from server import WebSocketServer, Router
+from models.orpheus import OrpheusModel
+from models.mock import MockModel
 
 
 def server_command(args):
@@ -16,16 +17,18 @@ def server_command(args):
     print(f"Session Capacity: {args.session_capacity}")
     print(f"Model Directory: {args.model_directory}")
     print(f"Internal connection base url: {args.internal_connection_base_url}")
+    # model = OrpheusModel(model_directory=args.model_directory)
+    model = MockModel()
+    router = Router(model=model)
     server = WebSocketServer(
-
         public_listen_ip=args.public_listen_ip,
         public_listen_port=args.public_listen_port,
         internal_listen_ip=args.internal_listen_ip,
         internal_listen_port=args.internal_listen_port,
         internal_connection_base_url=args.internal_connection_base_url,
-        args.session_capacity,
-        args.model_directory,
+        router=router,
     )
+    server.run()
     # Add your server implementation here
 
 
@@ -101,6 +104,7 @@ def main():
 
     # Handle commands
     if args.command == "server":
+        print("here")
         server_command(args)
     elif args.command == "inference":
         inference_command(args)
