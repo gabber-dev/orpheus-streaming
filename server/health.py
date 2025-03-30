@@ -36,6 +36,7 @@ class RedisHealth(Health):
         *,
         config: Config,
         timeout_seconds: int = 30,
+        update_interval: float = 5.0,
     ):
         self._redis = aioredis.Redis(
             host=config.redis_config.host,
@@ -51,6 +52,7 @@ class RedisHealth(Health):
         self._sessions = 0
         self._max_sessions = config.max_sessions
         self._timeout_seconds = timeout_seconds
+        self._update_interval = update_interval
 
     async def start(self):
         self._report_status_task = asyncio.create_task(self._report_status_loop())
@@ -110,7 +112,7 @@ class RedisHealth(Health):
     async def _report_status_loop(self):
         while not self._closed:
             await self._update_status()
-            await asyncio.sleep(5)
+            await asyncio.sleep(self._update_interval)
 
     async def _update_status(self):
         # Create ServerHealth object
@@ -141,10 +143,11 @@ class RedisHealth(Health):
     async def close(self):
         self._closed = True
         if self._report_status_task:
-            self._report_status_task.cancel()
+            try:
+                self._report_status_task.cancel()
+                await self._report_status_task
+            except asyncio.CancelledError:
+                pass
         await self._redis.close()
         if self._cleanup_expired_servers_task:
             await self._cleanup_expired_servers_task
-
-        if self._report_status_task:
-            await self._report_status_task

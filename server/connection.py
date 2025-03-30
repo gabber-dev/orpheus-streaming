@@ -14,7 +14,13 @@ from .proto_generated.tts_pb2 import (
     SendMessage,
     ReceiveMessage,
     AudioData,
+    Finished,
     AUDIOTYPE_PCM16LE,
+)
+
+from .errors import (
+    NoCapacityError,
+    UnknownServerError,
 )
 
 
@@ -60,12 +66,24 @@ class WebsocketConnection:
                     continue
 
                 await ws_sess.handle_message(proto_msg)
+        except NoCapacityError as e:
+            await self._ws.send_bytes(
+                ReceiveMessage(
+                    session=e.session,
+                    error=Error(message=e.message),
+                ).SerializeToString()
+            )
+        except UnknownServerError as e:
+            await self._ws.send_bytes(
+                ReceiveMessage(
+                    session=e.session,
+                    error=Error(message=e.message),
+                ).SerializeToString()
+            )
+            await self._ws.close()
         except Exception as e:
             logging.error(f"Error handling message: {e}")
-            # If this is a public connection, close it.
-
-            if not self._internal:
-                await self._ws.close()
+            await self._ws.close()
 
     async def _session_complete(self, task: asyncio.Task):
         await task
@@ -77,7 +95,7 @@ class WebsocketConnection:
         # If we have local capacity, create a local session
         if can_accept_local:
             ws_sess = LocalWebsocketSession(
-                ws=self._ws, start_msg=original, model=self._model
+                config=self._config, ws=self._ws, start_msg=original, model=self._model
             )
             await self._health.add_session()
 
@@ -96,18 +114,12 @@ class WebsocketConnection:
         # If we don't have capacity even after forwarding, return an error
         if self._internal:
             logging.error("No capacity after internal forwarding")
-            await self._ws.send_bytes(
-                ReceiveMessage(
-                    session=original.session,
-                    error=Error(message="No capacity"),
-                ).SerializeToString()
-            )
-            raise Exception("No capacity")
+            raise NoCapacityError("No capacity")
 
         destination_candidates = await self._health.query_available_servers()
         if len(destination_candidates) == 0:
             logging.error("No destination servers available")
-            raise Exception("No destination servers available")
+            raise NoCapacityError("No capacity")
 
         ws_sess = RemoteWebsocketSession(
             config=self._config,
@@ -144,8 +156,14 @@ class WebsocketSession(ABC):
 
 class LocalWebsocketSession(WebsocketSession):
     def __init__(
-        self, *, ws: web.WebSocketResponse, start_msg: SendMessage, model: BaseModel
+        self,
+        *,
+        ws: web.WebSocketResponse,
+        start_msg: SendMessage,
+        model: BaseModel,
+        config: Config,
     ):
+        self._config = config
         self._ws = ws
         self._start_msg = start_msg
         self._model = model
@@ -176,6 +194,8 @@ class LocalWebsocketSession(WebsocketSession):
 
                 if msg.HasField("push_text"):
                     self._session_handle.push(text=msg.push_text.text)
+                elif msg.HasField("eos"):
+                    self._session_handle.eos()
 
             if self._session_handle is None:
                 logging.error("Session handle not found")
@@ -198,15 +218,16 @@ class LocalWebsocketSession(WebsocketSession):
 
         audio_msg = ReceiveMessage(
             session=self._start_msg.session,
-            audio_data=AudioData(
-                audio=b"",
-                sample_rate=24000,
-                channel_count=1,
-                audio_type=AUDIOTYPE_PCM16LE,
-            ),
+            finished=Finished(),
         )
         await self._ws.send_bytes(audio_msg.SerializeToString())
         await send_task
+
+    async def inactivity_input_loop(self):
+        pass
+
+    async def inactivity_output_loop(self):
+        pass
 
 
 class RemoteWebsocketSession(WebsocketSession):

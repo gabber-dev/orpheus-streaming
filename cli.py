@@ -34,6 +34,8 @@ async def server_command(args):
         internal_listen_ip=args.internal_listen_ip,
         internal_listen_port=args.internal_listen_port,
         max_sessions=args.session_capacity,
+        session_input_timeout=2.0,
+        session_output_timeout=2.0,
         redis_config=RedisConfig(
             host=args.redis_host,
             port=args.redis_port,

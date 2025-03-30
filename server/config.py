@@ -9,6 +9,8 @@ class Config:
     internal_listen_ip: str
     internal_listen_port: int
     max_sessions: int
+    session_input_timeout: float
+    session_output_timeout: float
     redis_config: "RedisConfig"
 
 

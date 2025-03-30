@@ -40,6 +40,8 @@ class MockSessionHandle(BaseSessionHandle):
             data = b"\x00" * 1024
             self._output_queue.put_nowait(data)
 
+        data = b"\x00" * 1024
+        self._output_queue.put_nowait(data)
         await self._output_queue.put(None)
 
     def push(self, text: str):
