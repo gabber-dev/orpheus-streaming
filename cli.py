@@ -2,11 +2,11 @@ import asyncio
 import argparse
 import sys
 
-from server import WebSocketServer, RedisHealth
+from server import WebSocketServer, RedisHealth, Config, RedisConfig
 from models import BaseModel, orpheus, mock
 
 
-def server_command(args):
+async def server_command(args):
     """Handle server command"""
     print("Starting server with the following configuration:")
     print(f"Public Listen IP: {args.public_listen_ip}")
@@ -27,25 +27,33 @@ def server_command(args):
     else:
         model = orpheus.OrpheusModel(model_directory=args.model_directory)
 
-    health = RedisHealth(
-        max_sessions=args.session_capacity,
-        internal_connection_base_url=args.internal_connection_base_url,
-        internal_listen_port=args.internal_listen_port,
-        redis_db=args.redis_db,
-        redis_host=args.redis_host,
-        redis_port=args.redis_port,
-    )
-    server = WebSocketServer(
+    config = Config(
         public_listen_ip=args.public_listen_ip,
         public_listen_port=args.public_listen_port,
+        internal_connection_base_url=args.internal_connection_base_url,
         internal_listen_ip=args.internal_listen_ip,
         internal_listen_port=args.internal_listen_port,
-        internal_connection_base_url=args.internal_connection_base_url,
-        health=health,
-        model=model,
+        max_sessions=args.session_capacity,
+        redis_config=RedisConfig(
+            host=args.redis_host,
+            port=args.redis_port,
+            db=args.redis_db,
+        ),
     )
-    server.run()
-    # Add your server implementation here
+
+    health = RedisHealth(config=config)
+    health_task = asyncio.create_task(health.start())
+    server = WebSocketServer(config=config, health=health, model=model)
+
+    try:
+        await server.start_server()
+    except KeyboardInterrupt:
+        await server.stop_server()
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
+    if health_task is not None:
+        await health_task
 
 
 def main():
@@ -120,8 +128,7 @@ def main():
 
     # Handle commands
     if args.command == "server":
-        print("here")
-        server_command(args)
+        asyncio.run(server_command(args))
     else:
         parser.print_help()
         sys.exit(1)

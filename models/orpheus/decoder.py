@@ -5,13 +5,12 @@ import numpy as np
 from typing import Any
 
 snac_device = "cuda"
-snac = SNAC.from_pretrained("hubertsiuzdak/snac_24khz").eval()
-snac = torch.compile(snac.to(snac_device), mode="max-autotune")
 
 
 class Decoder:
     def __init__(self):
-        self.model = snac
+        snac = SNAC.from_pretrained("hubertsiuzdak/snac_24khz").eval()
+        self.model = torch.compile(snac.to(snac_device), mode="max-autotune")
         self._buffer_queue = asyncio.Queue[list[int] | None]()
         self._output_queue = asyncio.Queue[bytes | None]()
         self._buffer: list[int] = []

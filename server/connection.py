@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from models import BaseModel, BaseSessionHandle
 
 from .health import Health
-from .proto_generated.health_pb2 import ServerHealth
+from .config import Config
 from .proto_generated.tts_pb2 import (
     Error,
     SendMessage,
@@ -23,10 +23,12 @@ class WebsocketConnection:
         self,
         *,
         ws: web.WebSocketResponse,
+        config: Config,
         health: Health,
         model: BaseModel,
         internal: bool,
     ):
+        self._config = config
         self._internal = internal
         self._health = health
         self._proxy = ProxyConnections()
@@ -36,10 +38,11 @@ class WebsocketConnection:
         self._model = model
         self._closed = False
         self._receive_task = asyncio.create_task(self.receive_loop())
+        self._session_complete_tasks = set[asyncio.Task]()
 
     async def receive_loop(self):
-        async for msg in self._ws:
-            try:
+        try:
+            async for msg in self._ws:
                 proto_msg = SendMessage.FromString(msg.data)
                 if proto_msg.HasField("start_session"):
                     await self._handle_start_session(original=proto_msg)
@@ -57,9 +60,16 @@ class WebsocketConnection:
                     continue
 
                 await ws_sess.handle_message(proto_msg)
-            except Exception as e:
-                logging.error(f"Error handling message: {e}")
+        except Exception as e:
+            logging.error(f"Error handling message: {e}")
+            # If this is a public connection, close it.
+
+            if not self._internal:
                 await self._ws.close()
+
+    async def _session_complete(self, task: asyncio.Task):
+        await task
+        await self._health.remove_session()
 
     async def _handle_start_session(self, *, original: SendMessage):
         logging.info(f"Creating session {original.session}")
@@ -69,15 +79,29 @@ class WebsocketConnection:
             ws_sess = LocalWebsocketSession(
                 ws=self._ws, start_msg=original, model=self._model
             )
+            await self._health.add_session()
+
             self._sessions[original.session] = ws_sess
             t = asyncio.create_task(ws_sess.run())
             self._session_run_tasks.add(t)
-            t.add_done_callback(lambda _: self._session_run_tasks.remove(t))
+            t.add_done_callback(self._session_run_tasks.remove)
+
+            session_complete_t = asyncio.create_task(self._health.remove_session())
+            self._session_complete_tasks.add(session_complete_t)
+            session_complete_t.add_done_callback(self._session_complete_tasks.remove)
+
+            await ws_sess.handle_message(original)
             return
 
         # If we don't have capacity even after forwarding, return an error
         if self._internal:
             logging.error("No capacity after internal forwarding")
+            await self._ws.send_bytes(
+                ReceiveMessage(
+                    session=original.session,
+                    error=Error(message="No capacity"),
+                ).SerializeToString()
+            )
             raise Exception("No capacity")
 
         destination_candidates = await self._health.query_available_servers()
@@ -86,6 +110,7 @@ class WebsocketConnection:
             raise Exception("No destination servers available")
 
         ws_sess = RemoteWebsocketSession(
+            config=self._config,
             ws=self._ws,
             start_msg=original,
             proxy=self._proxy,
@@ -95,7 +120,6 @@ class WebsocketConnection:
         t = asyncio.create_task(ws_sess.run())
         self._session_run_tasks.add(t)
         t.add_done_callback(lambda _: self._session_run_tasks.remove(t))
-        await ws_sess.handle_message(original)
 
     async def wait_for_complete(self):
         await self._receive_task
@@ -161,7 +185,6 @@ class LocalWebsocketSession(WebsocketSession):
 
         send_task = asyncio.create_task(send_loop())
         async for msg in self._session_handle:
-            print("NEIL got audio", self._start_msg.session)
             audio_msg = ReceiveMessage(
                 session=self._start_msg.session,
                 audio_data=AudioData(
@@ -190,16 +213,17 @@ class RemoteWebsocketSession(WebsocketSession):
     def __init__(
         self,
         *,
+        config: Config,
         ws: web.WebSocketResponse,
         start_msg: SendMessage,
         proxy: "ProxyConnections",
-        destination_candidates: list[ServerHealth],
+        destination_candidates: list[str],
     ):
+        self._config = config
         self._ws = ws
         self._start_msg = start_msg
         self._proxy = proxy
         self._destination_candidates = destination_candidates
-        self._destination_server: ServerHealth | None = None
         self._proxy_handle: ProxyHandle | None = None
         self._proxy_handle_task: asyncio.Task | None = None
         self._input_queue: asyncio.Queue[SendMessage | None] = asyncio.Queue()
@@ -210,24 +234,26 @@ class RemoteWebsocketSession(WebsocketSession):
     async def run(self):
         # This is the first message, so we need to find a viable destination server
         # if there are none, we return an error
-        if not self._destination_server:
-            for server in self._destination_candidates:
-                try:
-                    self._proxy_handle = await self._proxy.start_proxy(
-                        session_id=self._start_msg.session,
-                        destination=self._destination_candidates[0],
-                    )
-                except Exception as e:
-                    logging.error(f"Failed to start proxy: {e}")
-                    continue
-
-            raise Exception(
-                f"No destination servers available, tried: {len(self._destination_candidates)} candidates"
-            )
+        destination = ""
+        for server in self._destination_candidates:
+            try:
+                self._proxy_handle = await self._proxy.start_proxy(
+                    session_id=self._start_msg.session,
+                    destination=self._destination_candidates[0],
+                )
+                destination = server
+            except Exception as e:
+                logging.error(f"Failed to start proxy: {e}")
+                continue
 
         if self._proxy_handle is None:
             logging.error("Proxy not available")
             raise Exception("Proxy not available")
+
+        assert destination is not None
+        logging.info(
+            f"Forwarding session to {destination} for session {self._start_msg.session}"
+        )
 
         await self._proxy_handle.send_message(message=self._start_msg)
 
@@ -274,9 +300,9 @@ class ProxyConnections:
         self._proxy_handle_lookup = dict[str, ProxyHandle]()
         self._session_ws_lookup = dict[str, aiohttp.client.ClientWebSocketResponse]()
 
-    async def start_proxy(self, *, session_id: str, destination: ServerHealth):
-        url = self._url_from_server(destination)
-        ws = await self._get_or_create_connection(destination)
+    async def start_proxy(self, *, session_id: str, destination: str):
+        url = f"{destination}/ws"
+        ws = await self._get_or_create_connection(url)
         if ws is None:
             raise Exception(f"Failed to create connection to {url}")
         self._session_ws_lookup[session_id] = ws
@@ -294,9 +320,7 @@ class ProxyConnections:
         except Exception as e:
             raise Exception(f"Failed to send message: {e}")
 
-    async def _get_or_create_connection(self, destination: ServerHealth):
-        url = self._url_from_server(destination)
-
+    async def _get_or_create_connection(self, url: str):
         if url in self._connections:
             ws = self._connections[url]
             if not ws.closed:
@@ -317,16 +341,15 @@ class ProxyConnections:
                 return None
 
             try:
-                ws = await self._create_connection(destination)
+                ws = await self._create_connection(url)
                 if ws is not None:
                     self._connections[url] = ws
                 return ws
             except Exception as e:
-                print(f"Failed to create connection to {url}: {e}")
+                logging.error(f"Failed to create connection to {url}", exc_info=e)
                 return None
 
-    async def _create_connection(self, destination: ServerHealth):
-        url = self._url_from_server(destination)
+    async def _create_connection(self, url: str):
         timeout = aiohttp.ClientWSTimeout(ws_close=10.0, ws_receive=10.0)
 
         ws = await self._http_session.ws_connect(
@@ -376,9 +399,6 @@ class ProxyConnections:
                 if hostname in self._connections:
                     del self._connections[hostname]
 
-    def _url_from_server(self, server: ServerHealth) -> str:
-        return f"{server.internal_connection_url}:{server.internal_connection_port}"
-
 
 class ProxyHandle:
     def __init__(self, *, proxy: ProxyConnections):
@@ -386,7 +406,7 @@ class ProxyHandle:
         self._msg_queue = asyncio.Queue[ReceiveMessage | None]()
 
     async def _receive_message(self, msg: ReceiveMessage):
-        pass
+        self._msg_queue.put_nowait(msg)
 
     async def send_message(self, *, message: SendMessage):
         await self._proxy.send_message(

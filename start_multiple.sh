@@ -15,6 +15,7 @@ trap cleanup SIGINT
 stdbuf -o0 python3 -u cli.py server \
     --public_listen_port 7000 \
     --session_capacity 0 \
+    --internal_connection_base_url ws://127.0.0.1 \
     --internal_listen_port 7001 \
     --redis_host localhost \
     --redis_port 6379 \
@@ -28,6 +29,7 @@ done &
 stdbuf -o0 python3 -u cli.py server \
     --public_listen_port 7500 \
     --session_capacity 1 \
+    --internal_connection_base_url ws://127.0.0.1 \
     --internal_listen_port 7501 \
     --redis_host localhost \
     --redis_port 6379 \
