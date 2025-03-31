@@ -2,8 +2,10 @@ import asyncio
 import logging
 import time
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
 import aioredis
+
 from .config import Config
 
 
@@ -27,6 +29,10 @@ class Health(ABC):
 
     @abstractmethod
     async def can_accept_session(self) -> bool:
+        pass
+
+    @abstractmethod
+    async def query_all_servers(self) -> list["ServerHealthInfo"]:
         pass
 
 
@@ -108,6 +114,55 @@ class RedisHealth(Health):
         ]
         return servers
 
+    async def query_all_servers(self) -> list["ServerHealthInfo"]:
+        """
+        Query all servers with their capacity and last update time.
+
+        Returns:
+            A sorted list of ServerHealthInfo objects, each containing server_id,
+            capacity (available sessions), and last_update (timestamp). Sorted by server_id.
+        """
+        # Get all servers with their capacity scores from sessions_capacity
+        servers_with_capacity = await self._redis.zrange(
+            "sessions_capacity", 0, -1, withscores=True
+        )
+
+        # Get all servers with their expiration timestamps from expirations
+        servers_with_expiration = await self._redis.zrange(
+            "expirations", 0, -1, withscores=True
+        )
+
+        # Prepare a dictionary to merge data, then convert to list
+        server_data = {}
+        current_server = (
+            f"{self._internal_connection_base_url}:{self._internal_listen_port}"
+        )
+
+        # Process capacity data
+        for server, score in servers_with_capacity:
+            server_name = server.decode()
+            if server_name == current_server:
+                continue  # Skip the current server
+            # Capacity is max_sessions - sessions, so negate the score
+            capacity = self._max_sessions - (
+                -score
+            )  # Score is negative available sessions
+            server_data[server_name] = ServerHealthInfo(
+                server_id=server_name,
+                capacity=capacity,
+                last_update=0.0,  # Placeholder for last_update
+            )
+
+        # Update with last update times
+        for server, timestamp in servers_with_expiration:
+            server_name = server.decode()
+            if server_name in server_data:
+                server_data[server_name].last_update = timestamp
+
+        # Convert to sorted list
+        result = sorted(server_data.values(), key=lambda x: x.server_id)
+        return result
+
     async def _report_status_loop(self):
         while not self._closed:
             await self._update_status()
@@ -150,3 +205,12 @@ class RedisHealth(Health):
         await self._redis.close()
         if self._cleanup_expired_servers_task:
             await self._cleanup_expired_servers_task
+
+
+@dataclass
+class ServerHealthInfo:
+    """Represents health information for a server."""
+
+    server_id: str  # Added to store the server identifier
+    capacity: float
+    last_update: float

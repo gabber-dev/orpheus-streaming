@@ -9,7 +9,7 @@ ARG MODEL_SOURCE_DIR
 
 # Create data directory and copy model
 RUN mkdir -p /app/data/model
-COPY ${MODEL_SOURCE_DIR} /app/data/model
+COPY ${MODEL_SOURCE_DIR}/* /app/data/model
 
 # Define environment variables with defaults (can be overridden at runtime)
 ENV PUBLIC_LISTEN_IP="0.0.0.0" \

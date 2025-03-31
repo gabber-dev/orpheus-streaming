@@ -12,6 +12,7 @@ class Config:
     session_input_timeout: float
     session_output_timeout: float
     redis_config: "RedisConfig"
+    admin_enabled: bool = False
 
 
 @dataclass

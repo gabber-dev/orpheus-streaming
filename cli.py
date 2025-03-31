@@ -41,6 +41,7 @@ async def server_command(args):
             port=args.redis_port,
             db=args.redis_db,
         ),
+        admin_enabled=args.admin_enabled,
     )
 
     health = RedisHealth(config=config)
@@ -123,6 +124,12 @@ def main():
         type=int,
         default=0,
         help="Database for redis load balancing",
+    )
+
+    server_parser.add_argument(
+        "--admin_enabled",
+        type=bool,
+        action="store_true",
     )
 
     # Parse arguments

@@ -5,6 +5,7 @@ from .connection import WebsocketConnection
 from .health import Health
 from models import BaseModel
 from .config import Config
+from .admin_frontend import AdminFrontend
 
 
 class WebSocketServer:
@@ -28,6 +29,7 @@ class WebSocketServer:
         self._public_runner: web.AppRunner | None = None
         self._internal_site: web.TCPSite | None = None
         self._public_site: web.TCPSite | None = None
+        self._admin_frontend: AdminFrontend | None = None
 
     def setup_routes(self):
         """Configure the server routes."""
