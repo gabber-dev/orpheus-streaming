@@ -22,9 +22,12 @@ class WebSocketServer:
         self.internal_app = web.Application()
         self.public_app = web.Application()
         self.setup_routes()
-        self.logger = logging.getLogger(__name__)
         self._closed = False
-        logging.basicConfig(level=logging.INFO)
+        self._connections: set[WebsocketConnection] = set()  # Track all connections
+        self._internal_runner: web.AppRunner | None = None
+        self._public_runner: web.AppRunner | None = None
+        self._internal_site: web.TCPSite | None = None
+        self._public_site: web.TCPSite | None = None
 
     def setup_routes(self):
         """Configure the server routes."""
@@ -32,10 +35,10 @@ class WebSocketServer:
         self.public_app.add_routes([web.get("/ws", self.public_websocket_handler)])
 
     async def internal_websocket_handler(self, request: web.Request):
-        """Handle WebSocket connections."""
+        """Handle internal WebSocket connections."""
         ws = web.WebSocketResponse()
         await ws.prepare(request)
-        self.logger.info(f"Client connected from {request.remote}")
+        logging.info(f"Internal client connected from {request.remote}")
         conn = WebsocketConnection(
             ws=ws,
             config=self._config,
@@ -43,15 +46,19 @@ class WebSocketServer:
             model=self._model,
             internal=True,
         )
-        await conn.wait_for_complete()
-        print("NEIL conn complete")
+        self._connections.add(conn)
+        try:
+            await conn.wait_for_complete()
+        finally:
+            self._connections.remove(conn)
+        await ws.close()
         return ws
 
     async def public_websocket_handler(self, request: web.Request):
-        """Handle WebSocket connections."""
+        """Handle public WebSocket connections."""
         ws = web.WebSocketResponse()
         await ws.prepare(request)
-        self.logger.info(f"Client connected from {request.remote}")
+        logging.info(f"Public client connected from {request.remote}")
         conn = WebsocketConnection(
             ws=ws,
             config=self._config,
@@ -59,31 +66,88 @@ class WebSocketServer:
             model=self._model,
             internal=False,
         )
-        await conn.wait_for_complete()
-        print("NEIL conn complete")
+        self._connections.add(conn)
+        try:
+            await conn.wait_for_complete()
+        finally:
+            self._connections.remove(conn)
+        await ws.close()
         return ws
 
     async def start_server(self):
         """Start the aiohttp server."""
-        internal_runner = web.AppRunner(self.internal_app)
-        public_runner = web.AppRunner(self.public_app)
-        await internal_runner.setup()
-        await public_runner.setup()
-        internal_site = web.TCPSite(
-            internal_runner,
+        self._internal_runner = web.AppRunner(self.internal_app)
+        self._public_runner = web.AppRunner(self.public_app)
+        await self._internal_runner.setup()
+        await self._public_runner.setup()
+        self._internal_site = web.TCPSite(
+            self._internal_runner,
             self._config.internal_listen_ip,
             self._config.internal_listen_port,
         )
-        public_site = web.TCPSite(
-            public_runner,
+        self._public_site = web.TCPSite(
+            self._public_runner,
             self._config.public_listen_ip,
             self._config.public_listen_port,
         )
-        await asyncio.gather(internal_site.start(), public_site.start())
-        print("NEIL done")
+        await asyncio.gather(self._internal_site.start(), self._public_site.start())
+        logging.info(
+            f"Server started on internal {self._config.internal_listen_ip}:{self._config.internal_listen_port} "
+            f"and public {self._config.public_listen_ip}:{self._config.public_listen_port}"
+        )
         while not self._closed:
             await asyncio.sleep(1)
 
     async def stop_server(self):
-        logging.info("Stopping server")
+        """Stop the aiohttp server and clean up resources with timeouts."""
+        if self._closed:
+            return
         self._closed = True
+        logging.info("Stopping server")
+
+        # Close all active WebSocket connections with a timeout
+        if self._connections:
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(
+                        *[conn.close() for conn in self._connections],
+                        return_exceptions=True,
+                    ),
+                    timeout=5.0,  # 5-second timeout for closing connections
+                )
+            except asyncio.TimeoutError:
+                logging.warning("Timeout occurred while closing WebSocket connections")
+            finally:
+                self._connections.clear()
+
+        logging.info("closed connections")
+
+        # Stop sites with a timeout
+        if self._internal_site and self._public_site:
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(
+                        self._internal_site.stop(),
+                        self._public_site.stop(),
+                        return_exceptions=True,
+                    ),
+                    timeout=5.0,  # 5-second timeout for stopping sites
+                )
+            except asyncio.TimeoutError:
+                logging.warning("Timeout occurred while stopping sites")
+
+        # Cleanup runners with a timeout
+        if self._internal_runner and self._public_runner:
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(
+                        self._internal_runner.shutdown(),
+                        self._public_runner.shutdown(),
+                        return_exceptions=True,
+                    ),
+                    timeout=5.0,  # 5-second timeout for runner cleanup
+                )
+            except asyncio.TimeoutError:
+                logging.warning("Timeout occurred while cleaning up runners")
+
+        logging.info("Server stopped")

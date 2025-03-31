@@ -1,18 +1,21 @@
 import asyncio
+import logging
+import subprocess
+
+import aioredis
 import aioredis.client
 import pytest
-import subprocess
-import aioredis
-from server import Config, WebSocketServer, RedisConfig, RedisHealth
-from server.proto_generated.tts_pb2 import (
-    StartSession,
-    PushText,
-    Eos,
-    SendMessage,
-    ReceiveMessage,
-)
-from models import mock
 from aiohttp import ClientSession, WSMsgType
+
+from models import mock
+from server import Config, RedisConfig, RedisHealth, WebSocketServer
+from server.proto_generated.tts_pb2 import (
+    Eos,
+    PushText,
+    ReceiveMessage,
+    SendMessage,
+    StartSession,
+)
 
 
 @pytest.fixture
@@ -23,7 +26,6 @@ def redis_server(request):
     db = marker.args[0] if marker else 2  # Default to 2 if marker is missing
     client = aioredis.from_url(f"redis://localhost:6379/{db}")
     process = None
-    print(f"NEIL redis_server using db {db} for {request.node.name}")
 
     # Synchronous ping helper
     def ping_redis():
@@ -98,8 +100,6 @@ def servers(request, redis_server, event_loop):
             public_port = base_port + (i * 2)
             internal_port = public_port + 1
 
-            print("NEIL starting server", i, public_port, internal_port, f"db {db}")
-
             config = Config(
                 public_listen_ip="127.0.0.1",
                 public_listen_port=public_port,
@@ -124,7 +124,6 @@ def servers(request, redis_server, event_loop):
         await asyncio.sleep(1)  # Ensure servers are up
 
     async def teardown():
-        print("NEIL terminating servers")
         for server, task in zip(server_instances, server_tasks):
             if hasattr(server, "stop_server"):
                 await server.stop_server()
@@ -146,16 +145,6 @@ def servers(request, redis_server, event_loop):
 
     # Run teardown in the event loop
     event_loop.run_until_complete(teardown())
-
-
-# Register custom markers
-def pytest_configure(config):
-    config.addinivalue_line(
-        "markers", "redis_db(db): specify the Redis database number for the test"
-    )
-    config.addinivalue_line(
-        "markers", "server_config(max_sessions_list, base_port): specify server config"
-    )
 
 
 @pytest.mark.asyncio
@@ -209,10 +198,10 @@ async def test_basic_server(servers, redis_server):
 async def test_proxy_server_happy(servers, redis_server):
     """Test basic TTS functionality: start session, push text, get audio, send EOS"""
     server_instances, server_tasks = servers
-    uri_1 = "ws://127.0.0.1:7200/ws"
+    uri = "ws://127.0.0.1:7200/ws"
 
     async with ClientSession() as session:
-        async with session.ws_connect(uri_1) as websocket:
+        async with session.ws_connect(uri) as websocket:
             # Start first session that fills up the first server
             await websocket.send_bytes(
                 SendMessage(
@@ -262,10 +251,10 @@ async def test_proxy_server_happy(servers, redis_server):
 async def test_proxy_server_capacity(servers, redis_server):
     """Test basic TTS functionality: start session, push text, get audio, send EOS"""
     server_instances, server_tasks = servers
-    uri_1 = "ws://127.0.0.1:7300/ws"
+    uri = "ws://127.0.0.1:7300/ws"
 
     async with ClientSession() as session:
-        async with session.ws_connect(uri_1) as websocket:
+        async with session.ws_connect(uri) as websocket:
             # Start first session that fills up the first server
             await websocket.send_bytes(
                 SendMessage(
@@ -320,3 +309,130 @@ async def test_proxy_server_capacity(servers, redis_server):
             assert msg.type == WSMsgType.BINARY
             finished_response = ReceiveMessage.FromString(msg.data)
             assert finished_response.HasField("finished")
+
+
+@pytest.mark.asyncio
+@pytest.mark.redis_db(5)
+@pytest.mark.server_config(max_sessions_list=[10, 10], base_port=7400)
+async def test_session_cleanup(servers, redis_server):
+    """Test session cleanup: verify all sessions get correct responses and Redis capacity."""
+    server_instances, server_tasks = servers
+    uri = "ws://127.0.0.1:7400/ws"
+    total_sessions = 20
+    redis_cli = aioredis.from_url(f"redis://localhost:6379/{5}")
+
+    async with ClientSession() as session:
+        async with session.ws_connect(uri) as websocket:
+            # Track responses for each session
+            session_responses = {
+                f"session_{i}": {"audio": 0, "finished": 0}
+                for i in range(total_sessions)
+            }
+
+            # Send messages for all sessions
+            for i in range(total_sessions):
+                session_id = f"session_{i}"
+                await websocket.send_bytes(
+                    SendMessage(
+                        session=session_id, start_session=StartSession(voice="tara")
+                    ).SerializeToString()
+                )
+                await websocket.send_bytes(
+                    SendMessage(
+                        session=session_id, push_text=PushText(text="Hello")
+                    ).SerializeToString()
+                )
+                await websocket.send_bytes(
+                    SendMessage(session=session_id, eos=Eos()).SerializeToString()
+                )
+
+            # Collect and verify responses (expect 2 per session: audio_data and finished)
+            expected_messages = total_sessions * 3  # audio x 2 + finished per session
+            for _ in range(expected_messages):
+                msg = await websocket.receive(timeout=1)
+                assert msg.type == WSMsgType.BINARY
+                response = ReceiveMessage.FromString(msg.data)
+
+                if response.HasField("audio_data"):
+                    session_responses[response.session]["audio"] += 1
+                elif response.HasField("finished"):
+                    session_responses[response.session]["finished"] += 1
+
+            # Verify each session received exactly one audio and one finished message
+            for session_id, counts in session_responses.items():
+                assert counts["audio"] == 2, (
+                    f"{session_id} expected 2 audio, got {counts['audio']}"
+                )
+                assert counts["finished"] == 1, (
+                    f"{session_id} expected 1 finished, got {counts['finished']}"
+                )
+
+            # Wait for servers to update redis
+            await asyncio.sleep(1)
+
+            # Verify Redis sessions_capacity after cleanup
+            capacity = await redis_cli.zrange(
+                "sessions_capacity", 0, -1, withscores=True
+            )
+            logging.info("NEIL cap %s", capacity)
+            capacity_dict: dict[str, int] = {}
+            for k in capacity:
+                capacity_dict[k[0].decode()] = int(k[1]) * -1
+
+            assert capacity_dict["ws://127.0.0.1:7401"] == 10
+            assert capacity_dict["ws://127.0.0.1:7403"] == 10
+
+        # Run test again but don't send EOS and let session timeout
+        async with session.ws_connect(uri) as websocket:
+            # Track responses for each session
+            session_responses = {
+                f"session_{i}": {"audio": 0, "finished": 0}
+                for i in range(total_sessions)
+            }
+
+            # Send messages for all sessions
+            for i in range(total_sessions):
+                session_id = f"session_{i}"
+                await websocket.send_bytes(
+                    SendMessage(
+                        session=session_id, start_session=StartSession(voice="tara")
+                    ).SerializeToString()
+                )
+                await websocket.send_bytes(
+                    SendMessage(
+                        session=session_id, push_text=PushText(text="Hello")
+                    ).SerializeToString()
+                )
+
+            await asyncio.sleep(2)
+
+            expected_messages = total_sessions * 1  # audio x 1 per session
+            for _ in range(expected_messages):
+                msg = await websocket.receive(timeout=1)
+                assert msg.type == WSMsgType.BINARY
+                response = ReceiveMessage.FromString(msg.data)
+
+                if response.HasField("audio_data"):
+                    session_responses[response.session]["audio"] += 1
+                elif response.HasField("finished"):
+                    session_responses[response.session]["finished"] += 1
+
+            # Verify each session received exactly one audio and one finished message
+            for session_id, counts in session_responses.items():
+                assert counts["audio"] == 1, (
+                    f"{session_id} expected 2 audio, got {counts['audio']}"
+                )
+
+            # Wait for servers to update redis
+            await asyncio.sleep(1)
+
+            # Verify Redis sessions_capacity after cleanup
+            capacity = await redis_cli.zrange(
+                "sessions_capacity", 0, -1, withscores=True
+            )
+            capacity_dict: dict[str, int] = {}
+            for k in capacity:
+                capacity_dict[k[0].decode()] = int(k[1]) * -1
+
+            assert capacity_dict["ws://127.0.0.1:7401"] == 10
+            assert capacity_dict["ws://127.0.0.1:7403"] == 10

@@ -106,7 +106,6 @@ class RedisHealth(Health):
             for s in decoded
             if s != f"{self._internal_connection_base_url}:{self._internal_listen_port}"
         ]
-        print("NEIL available servers", servers)
         return servers
 
     async def _report_status_loop(self):

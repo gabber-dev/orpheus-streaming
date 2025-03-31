@@ -31,7 +31,6 @@ class MockSessionHandle(BaseSessionHandle):
     async def run(self):
         while True:
             prompt = await self._input_queue.get()
-            print("NEIL prompt", prompt)
             if prompt is None:
                 break
 

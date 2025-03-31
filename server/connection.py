@@ -1,26 +1,26 @@
 import asyncio
 import logging
+import time
+from abc import ABC, abstractmethod
 
 import aiohttp
 from aiohttp import web
-from abc import ABC, abstractmethod
 
 from models import BaseModel, BaseSessionHandle
 
-from .health import Health
 from .config import Config
-from .proto_generated.tts_pb2 import (
-    Error,
-    SendMessage,
-    ReceiveMessage,
-    AudioData,
-    Finished,
-    AUDIOTYPE_PCM16LE,
-)
-
 from .errors import (
     NoCapacityError,
     UnknownServerError,
+)
+from .health import Health
+from .proto_generated.tts_pb2 import (
+    AUDIOTYPE_PCM16LE,
+    AudioData,
+    Error,
+    Finished,
+    ReceiveMessage,
+    SendMessage,
 )
 
 
@@ -44,7 +44,6 @@ class WebsocketConnection:
         self._model = model
         self._closed = False
         self._receive_task = asyncio.create_task(self.receive_loop())
-        self._session_complete_tasks = set[asyncio.Task]()
 
     async def receive_loop(self):
         try:
@@ -54,7 +53,6 @@ class WebsocketConnection:
                     await self._handle_start_session(original=proto_msg)
                     continue
 
-                print("NEIL got messsaage", proto_msg)
                 ws_sess = self._sessions.get(proto_msg.session)
                 if ws_sess is None:
                     await self._ws.send_bytes(
@@ -67,6 +65,7 @@ class WebsocketConnection:
 
                 await ws_sess.handle_message(proto_msg)
         except NoCapacityError as e:
+            logging.error(f"NEIL No capacity: {e}")
             await self._ws.send_bytes(
                 ReceiveMessage(
                     session=e.session,
@@ -98,28 +97,23 @@ class WebsocketConnection:
                 config=self._config, ws=self._ws, start_msg=original, model=self._model
             )
             await self._health.add_session()
-
             self._sessions[original.session] = ws_sess
-            t = asyncio.create_task(ws_sess.run())
+            t = asyncio.create_task(
+                self._run_session(id=original.session, ws_sess=ws_sess)
+            )
             self._session_run_tasks.add(t)
             t.add_done_callback(self._session_run_tasks.remove)
-
-            session_complete_t = asyncio.create_task(self._health.remove_session())
-            self._session_complete_tasks.add(session_complete_t)
-            session_complete_t.add_done_callback(self._session_complete_tasks.remove)
-
-            await ws_sess.handle_message(original)
             return
 
         # If we don't have capacity even after forwarding, return an error
         if self._internal:
             logging.error("No capacity after internal forwarding")
-            raise NoCapacityError("No capacity")
+            raise NoCapacityError(original.session)
 
         destination_candidates = await self._health.query_available_servers()
         if len(destination_candidates) == 0:
             logging.error("No destination servers available")
-            raise NoCapacityError("No capacity")
+            raise NoCapacityError(original.session)
 
         ws_sess = RemoteWebsocketSession(
             config=self._config,
@@ -133,9 +127,16 @@ class WebsocketConnection:
         self._session_run_tasks.add(t)
         t.add_done_callback(lambda _: self._session_run_tasks.remove(t))
 
+    async def _run_session(self, *, id: str, ws_sess: "WebsocketSession"):
+        logging.info(f"Running session: {id}")
+        await ws_sess.run()
+        await self._health.remove_session()
+        logging.info(f"Session complete: {id}")
+
     async def wait_for_complete(self):
         await self._receive_task
-        for task in self._session_run_tasks:
+        all_tasks = list(self._session_run_tasks)
+        for task in all_tasks:
             await task
 
     async def close(self):
@@ -169,11 +170,20 @@ class LocalWebsocketSession(WebsocketSession):
         self._model = model
         self._session_handle: BaseSessionHandle | None = None
         self._input_queue: asyncio.Queue[SendMessage | None] = asyncio.Queue()
+        self._closed = False
+        self._inactivity_task = asyncio.create_task(self.inactivity_loop())
+        self._eos = False
+        self._last_input = time.time()
+        self._last_output = time.time()
 
     async def handle_message(self, msg: SendMessage):
+        if self._closed:
+            return
         if msg.HasField("eos"):
+            self._eos = True
             await self._input_queue.put(None)
             return
+        self._last_input = time.time()
         await self._input_queue.put(msg)
 
     async def run(self):
@@ -205,6 +215,7 @@ class LocalWebsocketSession(WebsocketSession):
 
         send_task = asyncio.create_task(send_loop())
         async for msg in self._session_handle:
+            self._last_output = time.time()
             audio_msg = ReceiveMessage(
                 session=self._start_msg.session,
                 audio_data=AudioData(
@@ -214,20 +225,49 @@ class LocalWebsocketSession(WebsocketSession):
                     audio_type=AUDIOTYPE_PCM16LE,
                 ),
             )
-            await self._ws.send_bytes(audio_msg.SerializeToString())
+            if not self._closed:
+                await self._ws.send_bytes(audio_msg.SerializeToString())
 
+        self._last_output = time.time()
         audio_msg = ReceiveMessage(
             session=self._start_msg.session,
             finished=Finished(),
         )
-        await self._ws.send_bytes(audio_msg.SerializeToString())
+        if not self._closed:
+            await self._ws.send_bytes(audio_msg.SerializeToString())
         await send_task
 
-    async def inactivity_input_loop(self):
-        pass
+    async def inactivity_loop(self):
+        while not self._eos:
+            current_time = time.time()
+            if (
+                current_time - self._last_input > self._config.session_input_timeout
+                and not self._eos
+            ):
+                self._closed = True
+                await self._input_queue.put(None)
+                await self._ws.send_bytes(
+                    ReceiveMessage(
+                        session=self._start_msg.session,
+                        error=Error(message="Inactivity timeout"),
+                    ).SerializeToString()
+                )
+                logging.warning(f"Input timeout: {self._start_msg.session}")
+                break
 
-    async def inactivity_output_loop(self):
-        pass
+            if current_time - self._last_output > self._config.session_output_timeout:
+                self._closed = True
+                await self._input_queue.put(None)
+                await self._ws.send_bytes(
+                    ReceiveMessage(
+                        session=self._start_msg.session,
+                        error=Error(message="Output timeout"),
+                    ).SerializeToString()
+                )
+                logging.warning(f"Output timeout: {self._start_msg.session}")
+                break
+
+            await asyncio.sleep(0.25)
 
 
 class RemoteWebsocketSession(WebsocketSession):
@@ -401,8 +441,6 @@ class ProxyConnections:
                 except Exception as e:
                     logging.error(f"Error handling message: {e}")
                     await ws.close()
-                # Handle any incoming messages if needed
-                pass
         except Exception as e:
             print(f"Connection to {hostname} closed: {e}")
         finally:
