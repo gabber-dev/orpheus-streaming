@@ -7,6 +7,10 @@ WORKDIR /app
 # Define build argument for model source directory
 ARG MODEL_SOURCE_DIR
 
+# Create data directory and copy model
+RUN mkdir -p /app/data/model
+COPY ${MODEL_SOURCE_DIR} /app/data/model
+
 # Define environment variables with defaults (can be overridden at runtime)
 ENV PUBLIC_LISTEN_IP="0.0.0.0" \
     PUBLIC_LISTEN_PORT=8080 \
@@ -26,10 +30,6 @@ RUN apt-get update && apt-get install -y \
 # Copy requirements file and install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Create data directory and copy model
-RUN mkdir -p /app/data/finetune-fp16
-COPY ${MODEL_SOURCE_DIR} /app/data/finetune-fp16
 
 # Copy application code
 COPY . .
