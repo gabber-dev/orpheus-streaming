@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package server_health;
+
+message ServerHealth {
+  string url = 1;
+  uint32 sessions = 2;
+  uint32 max_sessions = 3;
+}
+
+message GetServerHealthResponse {
+  ServerHealth server_health = 1;
+  double last_updated = 2;
+}

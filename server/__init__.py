@@ -1,5 +1,5 @@
 from .server import WebSocketServer
-from .health import Health, RedisHealth
-from .config import Config, RedisConfig
+from .health import Health, ControllerHealth, LocalHealth
+from .config import Config
 
-__all__ = ["WebSocketServer", "Health", "RedisHealth", "Config", "RedisConfig"]
+__all__ = ["WebSocketServer", "Health", "ControllerHealth", "Config", "LocalHealth"]

@@ -13,14 +13,10 @@ trap cleanup SIGINT
 
 # Start Server 1 (ports 7000, 7001) with green output
 stdbuf -o0 python3 -u cli.py server \
-    --public_listen_port 7000 \
-    --session_capacity 0 \
-    --internal_connection_base_url ws://127.0.0.1 \
-    --internal_listen_port 7001 \
-    --admin_listen_port 7002 \
-    --redis_host localhost \
-    --redis_port 6379 \
-    --redis_db 2 \
+    --listen-port 7000 \
+    --max-sessions 0 \
+    --advertise-url ws://localhost:7000 \
+    --controller-url http://localhost:9000 \
     --mock \
     2>&1 | stdbuf -o0 sed 's/^/[server-1] /' | while IFS= read -r line; do 
     echo -e "\033[32m$line\033[0m"
@@ -28,17 +24,19 @@ done &
 
 # Start Server 2 (ports 7500, 7501) with blue output
 stdbuf -o0 python3 -u cli.py server \
-    --public_listen_port 7500 \
-    --session_capacity 1 \
-    --internal_connection_base_url ws://127.0.0.1 \
-    --internal_listen_port 7501 \
-    --admin_listen_port 7502 \
-    --redis_host localhost \
-    --redis_port 6379 \
-    --redis_db 2 \
+    --listen-port 7500 \
+    --max-sessions 1 \
+    --advertise-url ws://localhost:7500 \
+    --controller-url http://localhost:9000 \
     --mock \
     2>&1 | stdbuf -o0 sed 's/^/[server-2] /' | while IFS= read -r line; do 
     echo -e "\033[34m$line\033[0m"
+done &
+
+stdbuf -o0 python3 -u cli.py controller \
+    --listen-port 9000 \
+    2>&1 | stdbuf -o0 sed 's/^/[controller] /' | while IFS= read -r line; do 
+    echo -e "\033[35m$line\033[0m"
 done &
 
 # Wait for background processes to keep script running

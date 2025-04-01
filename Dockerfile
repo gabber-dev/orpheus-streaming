@@ -43,6 +43,4 @@ CMD ["python", "cli.py", "server", \
     "--internal_connection_base_url", "$INTERNAL_CONNECTION_BASE_URL", \
     "--session_capacity", "$SESSION_CAPACITY", \
     "--model_directory", "/app/data/model", \
-    "--redis_host", "$REDIS_HOST", \
-    "--redis_port", "$REDIS_PORT", \
-    "--redis_db", "$REDIS_DB"]
+    ]

@@ -14,7 +14,7 @@ from .errors import (
     UnknownServerError,
 )
 from .health import Health
-from .proto_generated.tts_pb2 import (
+from proto_generated.tts_pb2 import (
     AUDIOTYPE_PCM16LE,
     AudioData,
     Error,
@@ -22,6 +22,8 @@ from .proto_generated.tts_pb2 import (
     ReceiveMessage,
     SendMessage,
 )
+
+from proto_generated.health_pb2 import GetServerHealthResponse
 
 
 class WebsocketConnection:
@@ -278,7 +280,7 @@ class RemoteWebsocketSession(WebsocketSession):
         ws: web.WebSocketResponse,
         start_msg: SendMessage,
         proxy: "ProxyConnections",
-        destination_candidates: list[str],
+        destination_candidates: list[GetServerHealthResponse],
     ):
         self._config = config
         self._ws = ws
@@ -300,7 +302,7 @@ class RemoteWebsocketSession(WebsocketSession):
             try:
                 self._proxy_handle = await self._proxy.start_proxy(
                     session_id=self._start_msg.session,
-                    destination=self._destination_candidates[0],
+                    destination=f"ws://{server.server_health.host}:{server.server_health.port}",
                 )
                 destination = server
             except Exception as e:

@@ -1,27 +1,31 @@
 import asyncio
 import argparse
 import sys
+import logging
 
-from server import WebSocketServer, RedisHealth, Config, RedisConfig
+
+from server import WebSocketServer, Config, ControllerHealth, LocalHealth, Health
 from models import BaseModel, orpheus, mock
+from controller import Controller, Config as ControllerConfig
+
+# Configure logging globally at INFO level
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 
 async def server_command(args):
     """Handle server command"""
-    print("Starting server with the following configuration:")
-    print(f"Public Listen IP: {args.public_listen_ip}")
-    print(f"Public Listen Port: {args.public_listen_port}")
-    print(f"Admin Listen IP: {args.admin_listen_ip}")
-    print(f"Admin Listen Port: {args.admin_listen_port}")
-    print(f"Internal Listen IP: {args.internal_listen_ip}")
-    print(f"Internal Listen Port: {args.internal_listen_port}")
-    print(f"Session Capacity: {args.session_capacity}")
-    print(f"Model Directory: {args.model_directory}")
-    print(f"Internal connection base url: {args.internal_connection_base_url}")
-    print(f"Mock: {args.mock}")
-    print(f"Redis Host: {args.redis_host}")
-    print(f"Redis Port: {args.redis_port}")
-    print(f"Redis DB: {args.redis_db}")
+    logging.info("Starting server with the following configuration:")
+    logging.info(f"Public Listen IP: {args.listen_ip}")
+    logging.info(f"Public Listen Port: {args.listen_port}")
+    logging.info(f"Advertise URL: {args.advertise_url}")
+    logging.info(f"Controller URL: {args.controller_url}")
+    logging.info(f"Max Sessions: {args.max_sessions}")
+    logging.info(f"Model Directory: {args.model_directory}")
+    logging.info(f"Mock: {args.mock}")
 
     model: BaseModel
     if args.mock:
@@ -29,86 +33,99 @@ async def server_command(args):
     else:
         model = orpheus.OrpheusModel(model_directory=args.model_directory)
 
+    controller_url: str | None = None
+    if args.controller_url != "":
+        controller_url = args.controller_url
+
     config = Config(
-        public_listen_ip=args.public_listen_ip,
-        public_listen_port=args.public_listen_port,
-        internal_connection_base_url=args.internal_connection_base_url,
-        internal_listen_ip=args.internal_listen_ip,
-        internal_listen_port=args.internal_listen_port,
-        admin_listen_ip=args.admin_listen_ip,
-        admin_listen_port=args.admin_listen_port,
-        max_sessions=args.session_capacity,
+        listen_ip=args.listen_ip,
+        listen_port=args.listen_port,
+        advertise_url=args.advertise_url,
+        max_sessions=args.max_sessions,
         session_input_timeout=2.0,
         session_output_timeout=3.0,
-        redis_config=RedisConfig(
-            host=args.redis_host,
-            port=args.redis_port,
-            db=args.redis_db,
-        ),
+        controller_url=controller_url,
     )
 
-    health = RedisHealth(config=config)
+    health: Health
+    if controller_url is not None:
+        health = ControllerHealth(config=config)
+    else:
+        health = LocalHealth(config=config)
     health_task = asyncio.create_task(health.start())
     server = WebSocketServer(config=config, health=health, model=model)
 
     try:
-        await server.start_server()
+        await server.start()
     except KeyboardInterrupt:
+        logging.info("Received keyboard interrupt, shutting down server")
         await server.stop_server()
     except Exception as e:
-        print(f"An error occurred: {e}")
+        logging.error(f"An error occurred: {e}")
 
     if health_task is not None:
         await health_task
 
 
+async def controller_command(args):
+    """Handle controller command"""
+    logging.info(f"Listen IP: {args.listen_ip}")
+    logging.info(f"Listen Port: {args.listen_port}")
+    cfg = ControllerConfig(
+        listen_ip=args.listen_ip,
+        listen_port=args.listen_port,
+    )
+    controller = Controller(config=cfg)
+    try:
+        await controller.start()
+    except KeyboardInterrupt:
+        logging.info("Received keyboard interrupt, shutting down controller")
+        await controller.close()
+    except Exception as e:
+        logging.error(f"An error occurred: {e}")
+
+
 def main():
     # Create the top-level parser
     parser = argparse.ArgumentParser(description="CLI Tool with multiple commands")
-    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+    subparsers = parser.add_subparsers(
+        dest="command", help="Available commands", required=True
+    )
 
     # Server command parser
     server_parser = subparsers.add_parser("server", help="Start the server")
     server_parser.add_argument(
-        "--public_listen_ip",
+        "--listen-ip",
         type=str,
         default="0.0.0.0",
         help="Public ip to listen on",
     )
     server_parser.add_argument(
-        "--public_listen_port", type=int, default=8080, help="Public port to listen on"
-    )
-    server_parser.add_argument(
-        "--admin_listen_ip",
-        type=str,
-        help="Admin ip to listen on",
-    )
-    server_parser.add_argument(
-        "--admin_listen_port", type=int, help="Admin port to listen on"
-    )
-    server_parser.add_argument(
-        "--internal_listen_ip",
-        type=str,
-        default="0.0.0.0",
-        help="Internal ip to listen on",
-    )
-    server_parser.add_argument(
-        "--internal_listen_port",
+        "--listen-port",
         type=int,
-        default=8081,
-        help="Internal port to listen on",
+        default=8080,
+        help="Public port to listen on",
     )
     server_parser.add_argument(
-        "--internal_connection_base_url",
+        "--advertise-url",
         type=str,
-        default="ws://127.0.0.1",
-        help="Host that will be registered with internal pool for load proxying from other servers",
+        help="Host to advertise to the cluster",
+        default="",
     )
     server_parser.add_argument(
-        "--session_capacity", type=int, default=10, help="Maximum number of sessions"
+        "--controller-url",
+        type=str,
+        help="URL of the controller",
+        default="",
     )
     server_parser.add_argument(
-        "--model_directory",
+        "--max-sessions",
+        type=int,
+        default=10,
+        help="Maximum number of sessions",
+    )
+    server_parser.add_argument(
+        "--model-directory",
         type=str,
         default="./data/finetune-fp16",
         help="Directory containing models",
@@ -118,34 +135,30 @@ def main():
         action="store_true",
         help="Use a mock model instead of the real model",
     )
-    server_parser.add_argument(
-        "--redis_host",
+
+    # Controller command parser
+    controller_parser = subparsers.add_parser("controller", help="Start the controller")
+    controller_parser.add_argument(
+        "--listen-ip",
         type=str,
-        default=0.1,
-        help="Delay for redis load balancing",
+        default="0.0.0.0",
+        help="Public ip to listen on",
     )
-    server_parser.add_argument(
-        "--redis_port",
+    controller_parser.add_argument(
+        "--listen-port",
         type=int,
-        default=6379,
-        help="Port for redis load balancing",
-    )
-    server_parser.add_argument(
-        "--redis_db",
-        type=int,
-        default=0,
-        help="Database for redis load balancing",
+        default=8080,
+        help="Public port to listen on",
     )
 
     # Parse arguments
     args = parser.parse_args()
 
-    # Handle commands
+    # Dispatch to appropriate command
     if args.command == "server":
         asyncio.run(server_command(args))
-    else:
-        parser.print_help()
-        sys.exit(1)
+    elif args.command == "controller":
+        asyncio.run(controller_command(args))
 
 
 if __name__ == "__main__":
