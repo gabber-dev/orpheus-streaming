@@ -134,15 +134,10 @@ class RedisHealth(Health):
 
         # Prepare a dictionary to merge data, then convert to list
         server_data = {}
-        current_server = (
-            f"{self._internal_connection_base_url}:{self._internal_listen_port}"
-        )
 
         # Process capacity data
         for server, score in servers_with_capacity:
             server_name = server.decode()
-            if server_name == current_server:
-                continue  # Skip the current server
             # Capacity is max_sessions - sessions, so negate the score
             capacity = self._max_sessions - (
                 -score

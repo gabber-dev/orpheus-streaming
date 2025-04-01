@@ -15,6 +15,19 @@ class AdminFrontend:
         self._site: web.TCPSite | None = None
         self._closed = False
 
+    async def start(self):
+        """Start the admin frontend server."""
+        if self._closed:
+            raise RuntimeError("Cannot start a closed server")
+        if self._runner is not None:
+            raise RuntimeError("Server is already running")
+        self._runner = web.AppRunner(self.app)
+        await self._runner.setup()
+        self._site = web.TCPSite(
+            self._runner, self._config.admin_listen_ip, self._config.admin_listen_port
+        )
+        await self._site.start()
+
     def setup_routes(self):
         """Configure the admin frontend routes."""
         self.app.add_routes([web.get("/", self.admin_page_handler)])
@@ -45,7 +58,7 @@ class AdminFrontend:
                 <table>
                     <tr>
                         <th>Server ID</th>
-                        <th>Status</th>
+                        <th>Capacity</th>
                         <th>Last Check</th>
                     </tr>
             """
@@ -57,7 +70,7 @@ class AdminFrontend:
                 html += f"""
                     <tr>
                         <td>{s.server_id}</td>
-                        <td>{status}</td>
+                        <td>{status * -1}</td>
                         <td>{last_check}</td>
                     </tr>
                 """
@@ -77,3 +90,16 @@ class AdminFrontend:
                 content_type="text/html",
                 status=500,
             )
+
+    async def close(self):
+        """Close the admin frontend server."""
+        if self._closed:
+            return
+        self._closed = True
+        if self._site is not None:
+            await self._site.stop()
+        if self._runner is not None:
+            await self._runner.cleanup()
+        self._runner = None
+        self._site = None
+        logging.info("Admin frontend server closed")

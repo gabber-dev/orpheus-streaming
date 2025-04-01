@@ -29,7 +29,10 @@ class WebSocketServer:
         self._public_runner: web.AppRunner | None = None
         self._internal_site: web.TCPSite | None = None
         self._public_site: web.TCPSite | None = None
-        self._admin_frontend: AdminFrontend | None = None
+        self._admin_frontend: AdminFrontend = AdminFrontend(
+            config=self._config,
+            health=self._health,
+        )
 
     def setup_routes(self):
         """Configure the server routes."""
@@ -92,7 +95,11 @@ class WebSocketServer:
             self._config.public_listen_ip,
             self._config.public_listen_port,
         )
-        await asyncio.gather(self._internal_site.start(), self._public_site.start())
+        await asyncio.gather(
+            self._internal_site.start(),
+            self._public_site.start(),
+            self._admin_frontend.start(),
+        )
         logging.info(
             f"Server started on internal {self._config.internal_listen_ip}:{self._config.internal_listen_port} "
             f"and public {self._config.public_listen_ip}:{self._config.public_listen_port}"
@@ -145,6 +152,7 @@ class WebSocketServer:
                     asyncio.gather(
                         self._internal_runner.shutdown(),
                         self._public_runner.shutdown(),
+                        self._admin_frontend.close(),
                         return_exceptions=True,
                     ),
                     timeout=5.0,  # 5-second timeout for runner cleanup

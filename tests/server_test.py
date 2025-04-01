@@ -97,13 +97,16 @@ def servers(request, redis_server, event_loop):
     async def setup():
         nonlocal server_instances, server_tasks, health_instances
         for i, max_sessions in enumerate(max_sessions_list):
-            public_port = base_port + (i * 2)
+            public_port = base_port + (i * 3)
             internal_port = public_port + 1
+            admin_port = public_port + 2
 
             config = Config(
                 public_listen_ip="127.0.0.1",
                 public_listen_port=public_port,
                 internal_connection_base_url="ws://127.0.0.1",
+                admin_listen_ip="127.0.0.1",
+                admin_listen_port=admin_port,
                 internal_listen_ip="127.0.0.1",
                 internal_listen_port=internal_port,
                 redis_config=RedisConfig(host="127.0.0.1", port=6379, db=db),
@@ -380,7 +383,7 @@ async def test_session_cleanup(servers, redis_server):
                 capacity_dict[k[0].decode()] = int(k[1]) * -1
 
             assert capacity_dict["ws://127.0.0.1:7401"] == 10
-            assert capacity_dict["ws://127.0.0.1:7403"] == 10
+            assert capacity_dict["ws://127.0.0.1:7404"] == 10
 
         # Run test again but don't send EOS and let session timeout
         async with session.ws_connect(uri) as websocket:
@@ -435,4 +438,4 @@ async def test_session_cleanup(servers, redis_server):
                 capacity_dict[k[0].decode()] = int(k[1]) * -1
 
             assert capacity_dict["ws://127.0.0.1:7401"] == 10
-            assert capacity_dict["ws://127.0.0.1:7403"] == 10
+            assert capacity_dict["ws://127.0.0.1:7404"] == 10

@@ -11,6 +11,8 @@ async def server_command(args):
     print("Starting server with the following configuration:")
     print(f"Public Listen IP: {args.public_listen_ip}")
     print(f"Public Listen Port: {args.public_listen_port}")
+    print(f"Admin Listen IP: {args.admin_listen_ip}")
+    print(f"Admin Listen Port: {args.admin_listen_port}")
     print(f"Internal Listen IP: {args.internal_listen_ip}")
     print(f"Internal Listen Port: {args.internal_listen_port}")
     print(f"Session Capacity: {args.session_capacity}")
@@ -33,6 +35,8 @@ async def server_command(args):
         internal_connection_base_url=args.internal_connection_base_url,
         internal_listen_ip=args.internal_listen_ip,
         internal_listen_port=args.internal_listen_port,
+        admin_listen_ip=args.admin_listen_ip,
+        admin_listen_port=args.admin_listen_port,
         max_sessions=args.session_capacity,
         session_input_timeout=2.0,
         session_output_timeout=3.0,
@@ -41,7 +45,6 @@ async def server_command(args):
             port=args.redis_port,
             db=args.redis_db,
         ),
-        admin_enabled=args.admin_enabled,
     )
 
     health = RedisHealth(config=config)
@@ -74,6 +77,14 @@ def main():
     )
     server_parser.add_argument(
         "--public_listen_port", type=int, default=8080, help="Public port to listen on"
+    )
+    server_parser.add_argument(
+        "--admin_listen_ip",
+        type=str,
+        help="Admin ip to listen on",
+    )
+    server_parser.add_argument(
+        "--admin_listen_port", type=int, help="Admin port to listen on"
     )
     server_parser.add_argument(
         "--internal_listen_ip",
@@ -124,12 +135,6 @@ def main():
         type=int,
         default=0,
         help="Database for redis load balancing",
-    )
-
-    server_parser.add_argument(
-        "--admin_enabled",
-        type=bool,
-        action="store_true",
     )
 
     # Parse arguments

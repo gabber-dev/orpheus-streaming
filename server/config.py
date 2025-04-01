@@ -8,11 +8,12 @@ class Config:
     internal_connection_base_url: str
     internal_listen_ip: str
     internal_listen_port: int
+    admin_listen_port: int
+    admin_listen_ip: str
     max_sessions: int
     session_input_timeout: float
     session_output_timeout: float
     redis_config: "RedisConfig"
-    admin_enabled: bool = False
 
 
 @dataclass
