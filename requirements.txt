@@ -1,6 +1,9 @@
+-f https://download.pytorch.org/whl/cu126
+torch
+torchvision
+torchaudio
 vllm~=0.7
 transformers
 numpy
 snac~=1.2.1
-torch
 protobuf~=6.30.2
