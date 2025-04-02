@@ -302,7 +302,7 @@ class RemoteWebsocketSession(WebsocketSession):
             try:
                 self._proxy_handle = await self._proxy.start_proxy(
                     session_id=self._start_msg.session,
-                    destination=f"ws://{server.server_health.host}:{server.server_health.port}",
+                    destination=server.server_health.url,
                 )
                 destination = server
             except Exception as e:
@@ -459,6 +459,7 @@ class ProxyConnections:
             finally:
                 if hostname in self._connections:
                     del self._connections[hostname]
+        await self._http_session.close()
 
 
 class ProxyHandle:

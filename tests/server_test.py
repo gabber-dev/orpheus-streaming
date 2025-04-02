@@ -24,7 +24,7 @@ async def test_basic_server():
     health = create_local_health(config)
     server = create_server(config, health)
 
-    tasks = asyncio.gather(server.start(), health.start())
+    tasks = [asyncio.create_task(server.start()), asyncio.create_task(health.start())]
     """Test basic TTS functionality: start session, push text, get audio, send EOS"""
     uri_1 = "ws://127.0.0.1:7000/ws"
 
@@ -68,7 +68,8 @@ async def test_basic_server():
 
     await server.stop_server()
     await health.close()
-    await tasks
+    for task in tasks:
+        await task
 
 
 @pytest.mark.asyncio
@@ -82,21 +83,26 @@ async def test_proxy_server_happy():
             port=7200, max_sessions=1, controller_url="http://127.0.0.1:9000"
         ),
     )
-    h_1, h_2 = create_local_health(c_1), create_local_health(c_2)
+    h_1, h_2 = create_controller_health(c_1), create_controller_health(c_2)
     s_1, s_2 = create_server(c_1, h_1), create_server(c_2, h_2)
     ctrl = create_controller_server(port=9000)
-
-    tasks = asyncio.gather(
-        s_1.start(),
-        s_2.start(),
-        h_1.start(),
-        h_2.start(),
-        ctrl.start(),
-    )
-
-    uri = "ws://127.0.0.1:7200/ws"
+    tasks: list[asyncio.Task] = []
+    tasks.append(asyncio.create_task(ctrl.start()))
 
     await asyncio.sleep(1)
+
+    tasks.extend(
+        [
+            asyncio.create_task(s_1.start()),
+            asyncio.create_task(s_2.start()),
+            asyncio.create_task(h_1.start()),
+            asyncio.create_task(h_2.start()),
+        ]
+    )
+
+    await asyncio.sleep(1)
+
+    uri = "ws://127.0.0.1:7100/ws"
 
     async with ClientSession() as session:
         async with session.ws_connect(uri) as websocket:
@@ -147,7 +153,8 @@ async def test_proxy_server_happy():
     await h_1.close()
     await h_2.close()
     await ctrl.close()
-    await tasks
+    for task in tasks:
+        await task
 
 
 @pytest.mark.asyncio
@@ -161,22 +168,27 @@ async def test_proxy_server_capacity():
             port=7400, max_sessions=1, controller_url="http://127.0.0.1:9001"
         ),
     )
-    h_1, h_2 = create_local_health(c_1), create_local_health(c_2)
+    h_1, h_2 = create_controller_health(c_1), create_controller_health(c_2)
     s_1, s_2 = create_server(c_1, h_1), create_server(c_2, h_2)
     ctrl = create_controller_server(port=9001)
 
-    tasks = asyncio.gather(
-        s_1.start(),
-        s_2.start(),
-        h_1.start(),
-        h_2.start(),
-        ctrl.start(),
-    )
-
-    uri = "ws://127.0.0.1:7300/ws"
-    uri = "ws://127.0.0.1:7400/ws"
+    tasks: list[asyncio.Task] = []
+    tasks.append(asyncio.create_task(ctrl.start()))
 
     await asyncio.sleep(1)
+
+    tasks.extend(
+        [
+            asyncio.create_task(s_1.start()),
+            asyncio.create_task(s_2.start()),
+            asyncio.create_task(h_1.start()),
+            asyncio.create_task(h_2.start()),
+        ]
+    )
+
+    await asyncio.sleep(1)
+
+    uri = "ws://127.0.0.1:7300/ws"
 
     async with ClientSession() as session:
         async with session.ws_connect(uri) as websocket:
@@ -240,7 +252,8 @@ async def test_proxy_server_capacity():
     await h_1.close()
     await h_2.close()
     await ctrl.close()
-    await tasks
+    for task in tasks:
+        await task
 
 
 @pytest.mark.asyncio
@@ -254,17 +267,25 @@ async def test_session_cleanup():
             port=7600, max_sessions=10, controller_url="http://127.0.0.1:9002"
         ),
     )
-    h_1, h_2 = create_local_health(c_1), create_local_health(c_2)
+    h_1, h_2 = create_controller_health(c_1), create_controller_health(c_2)
     s_1, s_2 = create_server(c_1, h_1), create_server(c_2, h_2)
     ctrl = create_controller_server(port=9002)
 
-    tasks = asyncio.gather(
-        s_1.start(),
-        s_2.start(),
-        h_1.start(),
-        h_2.start(),
-        ctrl.start(),
+    tasks: list[asyncio.Task] = []
+    tasks.append(asyncio.create_task(ctrl.start()))
+
+    await asyncio.sleep(1)
+
+    tasks.extend(
+        [
+            asyncio.create_task(s_1.start()),
+            asyncio.create_task(s_2.start()),
+            asyncio.create_task(h_1.start()),
+            asyncio.create_task(h_2.start()),
+        ]
     )
+
+    await asyncio.sleep(1)
 
     uri = "ws://127.0.0.1:7500/ws"
     total_sessions = 20
@@ -379,7 +400,8 @@ async def test_session_cleanup():
     await h_1.close()
     await h_2.close()
     await ctrl.close()
-    await tasks
+    for task in tasks:
+        await task
 
 
 def create_config(*, port: int, max_sessions: int, controller_url: str | None):

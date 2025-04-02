@@ -17,6 +17,8 @@ stdbuf -o0 python3 -u cli.py server \
     --max-sessions 0 \
     --advertise-url ws://localhost:7000 \
     --controller-url http://localhost:9000 \
+    --session-input-timeout 20 \
+    --session-output-timeout 20 \
     --mock \
     2>&1 | stdbuf -o0 sed 's/^/[server-1] /' | while IFS= read -r line; do 
     echo -e "\033[32m$line\033[0m"
@@ -27,6 +29,8 @@ stdbuf -o0 python3 -u cli.py server \
     --listen-port 7500 \
     --max-sessions 1 \
     --advertise-url ws://localhost:7500 \
+    --session-input-timeout 20 \
+    --session-output-timeout 20 \
     --controller-url http://localhost:9000 \
     --mock \
     2>&1 | stdbuf -o0 sed 's/^/[server-2] /' | while IFS= read -r line; do 

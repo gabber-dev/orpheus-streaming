@@ -83,13 +83,12 @@ class ControllerHealth(Health):
         async with self._client_session.get(
             f"{self._config.controller_url}/health/available_servers"
         ) as resp:
-            text = await resp.text()
-            # Parse JSON text into Python list
-            data = json.loads(text)
+            logging.info("NEIL WAS HERE %s", await resp.text())
+            json_res = await resp.json()
 
             # Convert each JSON item to a protobuf message
             result = []
-            for item in data:
+            for item in json_res:
                 message = GetServerHealthResponse()
                 Parse(json.dumps(item), message)
                 result.append(message)
@@ -151,7 +150,7 @@ class ControllerHealth(Health):
                 if resp.status != 200:
                     logging.error(f"Failed to update status: {await resp.text()}")
         except Exception as e:
-            print(f"Error updating health status: {str(e)}")
+            logging.error("Error updating health status", exc_info=e)
 
     async def close(self):
         self._closed = True

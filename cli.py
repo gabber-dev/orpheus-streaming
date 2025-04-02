@@ -1,6 +1,5 @@
 import asyncio
 import argparse
-import sys
 import logging
 
 
@@ -26,6 +25,8 @@ async def server_command(args):
     logging.info(f"Max Sessions: {args.max_sessions}")
     logging.info(f"Model Directory: {args.model_directory}")
     logging.info(f"Mock: {args.mock}")
+    logging.info(f"Session Input Timeout: {args.session_input_timeout}")
+    logging.info(f"Session Output Timeout: {args.session_output_timeout}")
 
     model: BaseModel
     if args.mock:
@@ -42,8 +43,8 @@ async def server_command(args):
         listen_port=args.listen_port,
         advertise_url=args.advertise_url,
         max_sessions=args.max_sessions,
-        session_input_timeout=2.0,
-        session_output_timeout=3.0,
+        session_input_timeout=args.session_input_timeout,
+        session_output_timeout=args.session_output_timeout,
         controller_url=controller_url,
     )
 
@@ -134,6 +135,15 @@ def main():
         "--mock",
         action="store_true",
         help="Use a mock model instead of the real model",
+    )
+    server_parser.add_argument(
+        "--session-input-timeout", type=float, default=2.0, help="Session input timeout"
+    )
+    server_parser.add_argument(
+        "--session-output-timeout",
+        type=float,
+        default=3.0,
+        help="Session output timeout",
     )
 
     # Controller command parser

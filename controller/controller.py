@@ -173,7 +173,6 @@ class ServiceHealthRepository:
         )
         self._servers[info.url] = info
         self._server_updated_time[info.url] = time.time()
-        print("NEIL WAS HERE", self._server_updated_time)
 
     async def get_available_servers(self) -> list[GetServerHealthResponse]:
         """Get a list of available servers (capacity < max_sessions)."""
