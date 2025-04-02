@@ -4,4 +4,3 @@ numpy
 snac~=1.2.1
 torch
 protobuf~=6.30.2
-aioredis==2.0.1
