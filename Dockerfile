@@ -1,21 +1,6 @@
 # Builder and runtime stage (single stage for simplicity with CUDA)
-FROM python:3.12-slim
+FROM gabberneil/torch:latest
 
-# Avoid interactive prompts during package installation
-ENV DEBIAN_FRONTEND=noninteractive
-
-RUN ls /usr/bin
-
-# Set working directory
-WORKDIR /app
-
-# Copy requirements file first (for caching)
-COPY requirements.txt .
-
-# Install Python packages from requirements.txt
-RUN pip install --no-cache-dir --break-system-packages -r requirements.txt
-
-# Define build argument for model source directory
 ARG MODEL_SOURCE_DIR
 
 # Copy the model and application code
