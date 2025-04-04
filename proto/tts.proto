@@ -1,6 +1,6 @@
 syntax = "proto3";
 package tts;
-option go_package = "https://github.com/gabber-dev/orpheus-streaming/tts";
+option go_package = "/tts";
 
 // Top-level message wrapper with oneof to handle all message types
 message SendMessage {
