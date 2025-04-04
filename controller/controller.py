@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime
 import logging
 import time
+from typing import Awaitable, Callable
 
 from aiohttp import web
 from google.protobuf.json_format import Parse, MessageToDict
@@ -42,6 +43,20 @@ class Controller:
 
         logging.info("Controller stopped")
 
+    async def _validate_password(
+        self,
+        request: web.Request,
+    ):
+        if self._config.password is not None:
+            auth_header = request.headers.get("Authorization")
+            if auth_header is None:
+                raise web.HTTPUnauthorized()
+            if not auth_header.startswith("Bearer "):
+                raise web.HTTPUnauthorized()
+            token = auth_header.split(" ")[1]
+            if token != self._config.password:
+                raise web.HTTPUnauthorized()
+
     def setup_routes(self):
         """Configure the server routes."""
         self._app.add_routes([web.get("/ws", self._ws_handler)])
@@ -54,8 +69,9 @@ class Controller:
         self._app.add_routes([web.post("/health/report", self._post_health_report)])
 
     async def _ws_handler(self, request: web.Request):
+        await self._validate_password(request)
         servers = await self._service_health_repository.get_available_servers()
-        if len(servers):
+        if len(servers) <= 0:
             return web.Response(status=503)
 
         # redirect to first available server
@@ -63,6 +79,7 @@ class Controller:
         return web.HTTPFound(f"ws://{server.server_health.url}")
 
     async def _get_admin(self, request: web.Request):
+        await self._validate_password(request)
         # Query all servers from the health object
         servers = await self._service_health_repository.get_all_servers()
 
@@ -112,12 +129,14 @@ class Controller:
         return web.Response(text=html, content_type="text/html")
 
     async def _post_health_report(self, request: web.Request):
+        await self._validate_password(request)
         body = await request.text()
         server_health = Parse(body, ServerHealth())
         await self._service_health_repository.update_server_health(info=server_health)
         return web.Response(text="OK")
 
     async def _get_available_servers(self, request: web.Request):
+        await self._validate_password(request)
         servers = await self._service_health_repository.get_available_servers()
         return web.json_response(
             [MessageToDict(s, float_precision=32) for s in servers],
@@ -125,6 +144,7 @@ class Controller:
         )
 
     async def _get_all_servers(self, request: web.Request):
+        await self._validate_password(request)
         servers = await self._service_health_repository.get_all_servers()
         return web.json_response(
             [MessageToDict(s, float_precision=32) for s in servers],

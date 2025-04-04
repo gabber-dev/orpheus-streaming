@@ -10,3 +10,4 @@ class Config:
     session_input_timeout: float
     session_output_timeout: float
     controller_url: str | None
+    password: str | None

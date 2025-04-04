@@ -75,7 +75,9 @@ class ControllerHealth(Health):
         self._config = config
         self._sessions = 0
         self._closed = False
-        self._client_session = aiohttp.ClientSession()
+        self._client_session = aiohttp.ClientSession(
+            headers={"Authorization": f"Bearer {self._config.password}"}
+        )
         self._update_interval = 5
         self._update_task: asyncio.Task | None = None
 
@@ -83,7 +85,6 @@ class ControllerHealth(Health):
         async with self._client_session.get(
             f"{self._config.controller_url}/health/available_servers"
         ) as resp:
-            logging.info("NEIL WAS HERE %s", await resp.text())
             json_res = await resp.json()
 
             # Convert each JSON item to a protobuf message

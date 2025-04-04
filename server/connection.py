@@ -39,7 +39,7 @@ class WebsocketConnection:
         self._config = config
         self._internal = internal
         self._health = health
-        self._proxy = ProxyConnections()
+        self._proxy = ProxyConnections(config=config)
         self._ws = ws
         self._sessions: dict[str, WebsocketSession] = {}
         self._session_run_tasks = set[asyncio.Task]()
@@ -354,11 +354,14 @@ class RemoteWebsocketSession(WebsocketSession):
 
 
 class ProxyConnections:
-    def __init__(self):
+    def __init__(self, *, config: Config):
+        self._config = config
         self._connections: dict[str, aiohttp.client.ClientWebSocketResponse] = {}
         self._connection_locks: dict[str, asyncio.Lock] = {}
         self._closing = False
-        self._http_session = aiohttp.ClientSession()
+        self._http_session = aiohttp.ClientSession(
+            headers={"Authorization": f"Bearer {self._config.password}"}
+        )
         self._connection_tasks = set[asyncio.Task]()
         self._proxy_handle_lookup = dict[str, ProxyHandle]()
         self._session_ws_lookup = dict[str, aiohttp.client.ClientWebSocketResponse]()

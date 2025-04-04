@@ -1,8 +1,5 @@
 import asyncio
-import logging
 
-import aioredis
-import aioredis.client
 import pytest
 from aiohttp import ClientSession, WSMsgType
 
@@ -30,7 +27,7 @@ async def test_basic_server():
 
     await asyncio.sleep(1)
 
-    async with ClientSession() as session:
+    async with ClientSession(headers={"Authorization": "Bearer password"}) as session:
         async with session.ws_connect(uri_1) as websocket:
             # Start session
             start_msg = SendMessage(
@@ -104,7 +101,7 @@ async def test_proxy_server_happy():
 
     uri = "ws://127.0.0.1:7100/ws"
 
-    async with ClientSession() as session:
+    async with ClientSession(headers={"Authorization": "Bearer password"}) as session:
         async with session.ws_connect(uri) as websocket:
             # Start first session that fills up the first server
             await websocket.send_bytes(
@@ -190,7 +187,7 @@ async def test_proxy_server_capacity():
 
     uri = "ws://127.0.0.1:7300/ws"
 
-    async with ClientSession() as session:
+    async with ClientSession(headers={"Authorization": "Bearer password"}) as session:
         async with session.ws_connect(uri) as websocket:
             # Start first session that fills up the first server
             await websocket.send_bytes(
@@ -292,7 +289,7 @@ async def test_session_cleanup():
 
     await asyncio.sleep(1)
 
-    async with ClientSession() as session:
+    async with ClientSession(headers={"Authorization": "Bearer password"}) as session:
         async with session.ws_connect(uri) as websocket:
             # Track responses for each session
             session_responses = {
@@ -413,6 +410,7 @@ def create_config(*, port: int, max_sessions: int, controller_url: str | None):
         session_input_timeout=0.5,
         session_output_timeout=0.5,
         controller_url=controller_url,
+        password="password",
     )
 
 
@@ -433,4 +431,8 @@ def create_server(config: Config, health: Health):
 
 
 def create_controller_server(port: int):
-    return Controller(config=ControllerConfig(listen_ip="127.0.0.1", listen_port=port))
+    return Controller(
+        config=ControllerConfig(
+            listen_ip="127.0.0.1", listen_port=port, password="password"
+        )
+    )

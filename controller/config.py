@@ -5,3 +5,4 @@ from dataclasses import dataclass
 class Config:
     listen_ip: str
     listen_port: int
+    password: str | None

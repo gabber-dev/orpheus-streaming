@@ -38,6 +38,10 @@ async def server_command(args):
     if args.controller_url != "":
         controller_url = args.controller_url
 
+    password: str | None = None
+    if args.password != "":
+        password = args.password
+
     config = Config(
         listen_ip=args.listen_ip,
         listen_port=args.listen_port,
@@ -46,6 +50,7 @@ async def server_command(args):
         session_input_timeout=args.session_input_timeout,
         session_output_timeout=args.session_output_timeout,
         controller_url=controller_url,
+        password=password,
     )
 
     health: Health
@@ -72,9 +77,13 @@ async def controller_command(args):
     """Handle controller command"""
     logging.info(f"Listen IP: {args.listen_ip}")
     logging.info(f"Listen Port: {args.listen_port}")
+    password: str | None = None
+    if args.password != "":
+        password = args.password
     cfg = ControllerConfig(
         listen_ip=args.listen_ip,
         listen_port=args.listen_port,
+        password=password,
     )
     controller = Controller(config=cfg)
     try:
@@ -145,6 +154,12 @@ def main():
         default=3.0,
         help="Session output timeout",
     )
+    server_parser.add_argument(
+        "--password",
+        type=str,
+        default="",
+        help="Bearer token password for authentication",
+    )
 
     # Controller command parser
     controller_parser = subparsers.add_parser("controller", help="Start the controller")
@@ -159,6 +174,12 @@ def main():
         type=int,
         default=8080,
         help="Public port to listen on",
+    )
+    controller_parser.add_argument(
+        "--password",
+        type=str,
+        default="",
+        help="Bearer token password for authentication",
     )
 
     # Parse arguments

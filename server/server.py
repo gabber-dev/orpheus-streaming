@@ -1,10 +1,14 @@
 import asyncio
-from aiohttp import web
 import logging
+from typing import Awaitable, Callable
+
+from aiohttp import web
+
+from models import BaseModel
+
+from .config import Config
 from .connection import WebsocketConnection
 from .health import Health
-from models import BaseModel
-from .config import Config
 
 
 class WebSocketServer:
@@ -26,11 +30,26 @@ class WebSocketServer:
         self._public_runner: web.AppRunner | None = None
         self._public_site: web.TCPSite | None = None
 
+    async def _validate_password(
+        self,
+        request: web.Request,
+    ):
+        if self._config.password is not None:
+            auth_header = request.headers.get("Authorization")
+            if auth_header is None:
+                raise web.HTTPUnauthorized()
+            if not auth_header.startswith("Bearer "):
+                raise web.HTTPUnauthorized()
+            token = auth_header.split(" ")[1]
+            if token != self._config.password:
+                raise web.HTTPUnauthorized()
+
     def setup_routes(self):
         """Configure the server routes."""
         self.public_app.add_routes([web.get("/ws", self.public_websocket_handler)])
 
     async def public_websocket_handler(self, request: web.Request):
+        await self._validate_password(request)
         """Handle public WebSocket connections."""
         ws = web.WebSocketResponse()
         await ws.prepare(request)
