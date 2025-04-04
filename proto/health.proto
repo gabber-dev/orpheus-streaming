@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package health;
-option go_package = "health";
+option go_package = "https://github.com/gabber-dev/orpheus-streaming/health";
 
 message ServerHealth {
   string url = 1;
