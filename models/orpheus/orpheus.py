@@ -67,8 +67,8 @@ class SessionHandle(BaseSessionHandle):
         engine: AsyncLLMEngine,
         tokenizer: PreTrainedTokenizerBase,
         voice: str | None,
-        max_text_context_tokens: int = 256,
-        max_audio_context_tokens: int = SNAC_TOKENS_PER_SECOND * 4,
+        max_text_context_tokens: int = 128,
+        max_audio_context_tokens: int = SNAC_TOKENS_PER_SECOND * 2,
     ):
         self._ttft_threshold = 0.5
         self._max_text_context_tokens = max_text_context_tokens
@@ -130,7 +130,7 @@ class SessionHandle(BaseSessionHandle):
         job = InferenceJob(
             engine=self._engine,
             input=prompt,
-            max_tokens=2048,
+            max_tokens=4096,
         )
         return job
 
@@ -224,6 +224,7 @@ class InferenceJob:
             prompt=tp,
             sampling_params=sampling_params,
         ):
+            print("NEIL finish reason", result.outputs[0].finish_reason)
             for token in result.outputs[0].token_ids:
                 token_count += 1
                 if decoder.push_token(token):
