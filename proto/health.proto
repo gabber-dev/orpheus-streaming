@@ -1,6 +1,7 @@
 syntax = "proto3";
 
-package server_health;
+package health;
+option go_package = "health";
 
 message ServerHealth {
   string url = 1;
