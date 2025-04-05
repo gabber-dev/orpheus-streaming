@@ -224,7 +224,6 @@ class InferenceJob:
             prompt=tp,
             sampling_params=sampling_params,
         ):
-            print("NEIL finish reason", result.outputs[0].finish_reason)
             for token in result.outputs[0].token_ids:
                 token_count += 1
                 if decoder.push_token(token):

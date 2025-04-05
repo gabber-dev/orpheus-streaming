@@ -20,6 +20,7 @@ stdbuf -o0 python3 -u cli.py server \
     --session-input-timeout 20 \
     --session-output-timeout 20 \
     --mock \
+    --password "aqituwe1294&" \
     2>&1 | stdbuf -o0 sed 's/^/[server-1] /' | while IFS= read -r line; do 
     echo -e "\033[32m$line\033[0m"
 done &
@@ -32,13 +33,14 @@ stdbuf -o0 python3 -u cli.py server \
     --session-input-timeout 20 \
     --session-output-timeout 20 \
     --controller-url http://localhost:9000 \
-    --mock \
+    --password "aqituwe1294&" \
     2>&1 | stdbuf -o0 sed 's/^/[server-2] /' | while IFS= read -r line; do 
     echo -e "\033[34m$line\033[0m"
 done &
 
 stdbuf -o0 python3 -u cli.py controller \
     --listen-port 9000 \
+    --password "aqituwe1294&" \
     2>&1 | stdbuf -o0 sed 's/^/[controller] /' | while IFS= read -r line; do 
     echo -e "\033[35m$line\033[0m"
 done &

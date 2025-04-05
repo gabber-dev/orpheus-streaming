@@ -50,6 +50,7 @@ class WebsocketConnection:
     async def receive_loop(self):
         try:
             async for msg in self._ws:
+                print("NEIL received message", msg)
                 proto_msg = SendMessage.FromString(msg.data)
                 if proto_msg.HasField("start_session"):
                     await self._handle_start_session(original=proto_msg)

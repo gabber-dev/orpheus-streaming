@@ -76,7 +76,13 @@ class Controller:
 
         # redirect to first available server
         server = servers[0]
-        return web.HTTPFound(f"ws://{server.server_health.url}")
+        # convert to http or https
+        url = server.server_health.url
+        if url.startswith("ws://"):
+            url = url.replace("ws://", "http://")
+        elif url.startswith("wss://"):
+            url = url.replace("wss://", "https://")
+        return web.HTTPFound(f"{url}/ws")
 
     async def _get_admin(self, request: web.Request):
         await self._validate_password(request)
