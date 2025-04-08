@@ -7,6 +7,7 @@ ARG MODEL_SOURCE_DIR
 COPY ${MODEL_SOURCE_DIR}/* /app/data/model/
 COPY controller ./controller/
 COPY models ./models/
+COPY sentence_tokenizer ./sentence_tokenizer/
 COPY proto_generated ./proto_generated/
 COPY server ./server/
 COPY cli.py .
