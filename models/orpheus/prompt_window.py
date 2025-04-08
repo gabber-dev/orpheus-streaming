@@ -2,7 +2,7 @@ from transformers import PreTrainedTokenizerBase
 import logging
 from typing import Tuple
 from .constants import START_TOKEN, END_TOKENS
-from .utils import split_sentences
+from sentence_tokenizer import SentenceSplitter, merge_sentences
 from dataclasses import dataclass
 
 
@@ -14,29 +14,31 @@ class PromptWindow:
         voice: str | None,
         previous_audio_tokens: int,
     ):
-        self._previous_text: str = ""
         self._previous_audio: list[int] = []
-        self._new_text = ""
         self._prompt = []
         self._tokenizer: PreTrainedTokenizerBase = tokenizer
+        self._sentence_splitter = SentenceSplitter()
+        self._sentences: list[str] = []
         self._voice = voice
         self._max_context_text_tokens = max_context_text_tokens
         self._inference_queue = list[Tuple[str, list[int]]]()
+        self._previous_text = ""
         self._previous_audio_tokens = previous_audio_tokens
 
     def push_text(self, text: str):
-        self._new_text += text
+        new_sentences = self._sentence_splitter.push(text)
+        self._sentences.extend(new_sentences)
+
+    def eos(self):
+        new_sentences = self._sentence_splitter.eos()
+        self._sentences.extend(new_sentences)
 
     def push_previous_inference(self, input_text: str, audio: list[int]):
         self._previous_text = input_text
         self._previous_audio = audio
 
     def get_next_inference(self) -> "PromptWindowInference | None":
-        if not self._new_text:
-            return None
-
-        sentences, partial_sentence = split_sentences(self._new_text)
-
+        sentences = self._sentences.copy()
         if len(sentences) == 0:
             return None
 
@@ -55,9 +57,7 @@ class PromptWindow:
                 s = sentences.pop()  # Remove last sentence
                 unused_sentences.insert(0, s)
                 new_complete_sentence_text = " ".join(sentences)
-                context_text = (
-                    ""  # Reduce context to nothing when new text is one sentence
-                )
+                context_text = ""
                 tokens = (
                     self._tokenizer(
                         context_text + new_complete_sentence_text, return_tensors="pt"
@@ -68,15 +68,16 @@ class PromptWindow:
             else:
                 break
 
-        self._new_text = " ".join(unused_sentences) + partial_sentence
-
+        merged = merge_sentences(new_complete_sentence_text)
         logging.info(
             f"Prompt window inference context text: {self._previous_text}, new text: {new_complete_sentence_text}"
         )
+        self._sentence_splitter = SentenceSplitter()
+        self._sentences = unused_sentences
         return PromptWindowInference(
             context_text=self._previous_text,
             context_audio=self._previous_audio,
-            new_text=new_complete_sentence_text,
+            new_text=merged,
             tokenizer=self._tokenizer,
             voice=self._voice,
         )

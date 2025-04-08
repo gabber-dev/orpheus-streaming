@@ -120,6 +120,7 @@ class SessionHandle(BaseSessionHandle):
             inference_task = asyncio.create_task(self._inference_task(inference_job))
 
         await inference_task
+        self._window.eos()
         inference = self._window.get_next_inference()
         while inference is not None:
             inference_job = await self._start_inference(inference)

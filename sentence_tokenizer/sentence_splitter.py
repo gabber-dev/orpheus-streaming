@@ -1,4 +1,3 @@
-import nltk
 from nltk.tokenize import sent_tokenize
 import re
 from dataclasses import dataclass
@@ -52,7 +51,6 @@ class SentenceSplitter:
         last_running_tag = tags[-1]
         if last_running_tag.tag:
             tokenized = sent_tokenize(last_running_tag.content)
-            print("NEIL tokenized", tokenized)
             for sentence in tokenized[:-1]:
                 sentences.append(
                     f"<{last_running_tag.tag}>{sentence.strip()}</{last_running_tag.tag}>"
@@ -64,7 +62,6 @@ class SentenceSplitter:
                 self._buffer = f"<{last_running_tag.tag}>"
         else:
             tokenized = sent_tokenize(last_running_tag.content)
-            print("NEIL untagged tokenized", tokenized)
             for sentence in tokenized[:-1]:
                 sentences.append(sentence.strip())
 

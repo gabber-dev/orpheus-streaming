@@ -17,9 +17,9 @@ async def test_basic_model():
 
     # Define the reference text (what was actually said)
     input_texts = [
-        "Hello world. Is this working? ",
+        "Hello world. Is this working?",
         "Th",
-        "is is a test. ",
+        "is is a test.",
         SCRIPT,
     ]
 

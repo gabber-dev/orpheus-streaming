@@ -65,7 +65,9 @@ class WebSocketServer:
         try:
             await conn.wait_for_complete()
         finally:
-            self._connections.remove(conn)
+            if conn in self._connections:
+                logging.info(f"Public client disconnected from {request.remote}")
+                self._connections.remove(conn)
         await ws.close()
         return ws
 

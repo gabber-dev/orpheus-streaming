@@ -183,7 +183,7 @@ async def test_proxy_server_capacity():
         ]
     )
 
-    await asyncio.sleep(1)
+    await asyncio.sleep(0.2)
 
     uri = "ws://127.0.0.1:7300/ws"
 
@@ -202,6 +202,8 @@ async def test_proxy_server_capacity():
                     session="session_2", start_session=StartSession(voice="tara")
                 ).SerializeToString()
             )
+
+            await asyncio.sleep(0.5)
 
             await websocket.send_bytes(
                 SendMessage(
@@ -407,8 +409,8 @@ def create_config(*, port: int, max_sessions: int, controller_url: str | None):
         listen_port=port,
         advertise_url=f"ws://127.0.0.1:{port}",
         max_sessions=max_sessions,
-        session_input_timeout=0.5,
-        session_output_timeout=0.5,
+        session_input_timeout=2.0,
+        session_output_timeout=2.0,
         controller_url=controller_url,
         password="password",
     )

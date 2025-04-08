@@ -53,7 +53,16 @@ class WebsocketConnection:
                 logging.debug(f"Received message: {msg}")
                 proto_msg = SendMessage.FromString(msg.data)
                 if proto_msg.HasField("start_session"):
-                    await self._handle_start_session(original=proto_msg)
+                    try:
+                        await self._handle_start_session(original=proto_msg)
+                    except NoCapacityError as e:
+                        logging.error(f"No capacity: {e}")
+                        await self._ws.send_bytes(
+                            ReceiveMessage(
+                                session=proto_msg.session,
+                                error=Error(message="No capacity"),
+                            ).SerializeToString()
+                        )
                     continue
 
                 ws_sess = self._sessions.get(proto_msg.session)
@@ -68,16 +77,8 @@ class WebsocketConnection:
 
                 await ws_sess.handle_message(proto_msg)
             logging.info("WebSocket closed")
-
-        except NoCapacityError as e:
-            logging.error(f"NEIL No capacity: {e}")
-            await self._ws.send_bytes(
-                ReceiveMessage(
-                    session=e.session,
-                    error=Error(message=e.message),
-                ).SerializeToString()
-            )
         except UnknownServerError as e:
+            logging.error(f"Unknown server: {e}")
             await self._ws.send_bytes(
                 ReceiveMessage(
                     session=e.session,
@@ -90,7 +91,9 @@ class WebsocketConnection:
             await self._ws.close()
 
         try:
-            for session in self._sessions.values():
+            sessions = list(self._sessions.values())
+            for session in sessions:
+                logging.info(f"Closing session loop {session}")
                 await session.close()
 
         except Exception as e:
@@ -104,6 +107,7 @@ class WebsocketConnection:
             ws_sess = LocalWebsocketSession(
                 config=self._config, ws=self._ws, start_msg=original, model=self._model
             )
+            self._sessions[original.session] = ws_sess
             await self._health.add_session()
             t = asyncio.create_task(
                 self._run_session(id=original.session, ws_sess=ws_sess)
@@ -129,13 +133,12 @@ class WebsocketConnection:
             proxy=self._proxy,
             destination_candidates=destination_candidates,
         )
+        self._sessions[original.session] = ws_sess
         t = asyncio.create_task(ws_sess.run())
         self._session_run_tasks.add(t)
         t.add_done_callback(lambda _: self._session_run_tasks.remove(t))
 
     async def _run_session(self, *, id: str, ws_sess: "WebsocketSession"):
-        self._sessions[id] = ws_sess
-        await self._health.add_session()
         try:
             logging.info(f"Running session: {id}")
             await ws_sess.run()
@@ -153,6 +156,7 @@ class WebsocketConnection:
             await task
 
     async def close(self):
+        logging.info("Closing WebSocket connection")
         self._closed = True
         await self._ws.close()
         # TODO implement session migration after timeout
@@ -221,13 +225,12 @@ class LocalWebsocketSession(WebsocketSession):
 
                 if msg.HasField("push_text"):
                     self._session_handle.push(text=msg.push_text.text)
-                elif msg.HasField("eos"):
-                    self._session_handle.eos()
 
             if self._session_handle is None:
                 logging.error("Session handle not found")
                 return
 
+            logging.info(f"Session {self._start_msg.session} EOS")
             self._session_handle.eos()
 
         send_task = asyncio.create_task(send_loop())
@@ -253,40 +256,44 @@ class LocalWebsocketSession(WebsocketSession):
         if not self._closed:
             await self._ws.send_bytes(audio_msg.SerializeToString())
         await send_task
+        self._closed = True
 
     async def inactivity_loop(self):
-        while not self._eos:
+        while not self._closed:
             current_time = time.time()
             if (
                 current_time - self._last_input > self._config.session_input_timeout
                 and not self._eos
             ):
                 self._closed = True
-                await self._input_queue.put(None)
-                await self._ws.send_bytes(
-                    ReceiveMessage(
-                        session=self._start_msg.session,
-                        error=Error(message="Inactivity timeout"),
-                    ).SerializeToString()
-                )
+                if not self._ws._closed:
+                    await self._ws.send_bytes(
+                        ReceiveMessage(
+                            session=self._start_msg.session,
+                            error=Error(message="Inactivity timeout"),
+                        ).SerializeToString()
+                    )
+                self._input_queue.put_nowait(None)
                 logging.warning(f"Input timeout: {self._start_msg.session}")
                 break
 
             if current_time - self._last_output > self._config.session_output_timeout:
                 self._closed = True
-                await self._input_queue.put(None)
-                await self._ws.send_bytes(
-                    ReceiveMessage(
-                        session=self._start_msg.session,
-                        error=Error(message="Output timeout"),
-                    ).SerializeToString()
-                )
+                if not self._ws._closed:
+                    await self._ws.send_bytes(
+                        ReceiveMessage(
+                            session=self._start_msg.session,
+                            error=Error(message="Output timeout"),
+                        ).SerializeToString()
+                    )
+                self._input_queue.put_nowait(None)
                 logging.warning(f"Output timeout: {self._start_msg.session}")
                 break
 
             await asyncio.sleep(0.25)
 
     async def close(self):
+        logging.info(f"Closing session {self._start_msg.session}")
         self._closed = True
         self._input_queue.put_nowait(None)
 
@@ -372,9 +379,10 @@ class RemoteWebsocketSession(WebsocketSession):
         await receive_task
 
     async def close(self):
+        logging.info(f"Closing session {self._start_msg.session}")
+        self._input_queue.put_nowait(None)
         if self._proxy_handle is not None:
-            self._input_queue.put_nowait(None)
-            await self._ws.close()
+            self._proxy_handle._msg_queue.put_nowait(None)
 
 
 class ProxyConnections:
@@ -477,6 +485,7 @@ class ProxyConnections:
                 del self._connections[hostname]
 
     async def close(self):
+        logging.info("Closing all proxy connections")
         self._closing = True
         for hostname, ws in list(self._connections.items()):
             try:
