@@ -3,6 +3,7 @@ from nltk.tokenize import sent_tokenize
 import re
 from dataclasses import dataclass
 import logging
+from .utils import get_tag_name
 
 
 class SentenceSplitter:
@@ -78,14 +79,6 @@ class SentenceSplitter:
         sentences = self.push("<eos>")
         self._buffer = ""
         return sentences
-
-
-def get_tag_name(tag):
-    # Match either <tag> or </tag> and capture the tag name
-    match = re.match(r"<\s*/?\s*([a-zA-Z]+)\s*>", tag)
-    if match:
-        return match.group(1)  # Return the captured tag name
-    return None
 
 
 @dataclass
