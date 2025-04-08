@@ -31,6 +31,7 @@ class PromptWindow:
 
     def eos(self):
         new_sentences = self._sentence_splitter.eos()
+        print("NEIL prompt window eos", self._sentences, new_sentences)
         self._sentences.extend(new_sentences)
 
     def push_previous_inference(self, input_text: str, audio: list[int]):
@@ -72,7 +73,6 @@ class PromptWindow:
         logging.info(
             f"Prompt window inference context text: {self._previous_text}, new text: {new_complete_sentence_text}"
         )
-        self._sentence_splitter = SentenceSplitter()
         self._sentences = unused_sentences
         return PromptWindowInference(
             context_text=self._previous_text,

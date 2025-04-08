@@ -18,7 +18,6 @@ class SentenceSplitter:
 
         running_tag = RunningTag(tag=None, content="")
         tags.append(running_tag)
-        print("parts", parts)
         for i in range(len(parts)):
             part = parts[i]
             if part == "":

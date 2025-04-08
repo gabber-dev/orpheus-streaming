@@ -22,6 +22,9 @@ async def test_basic_model():
         "is is a test.",
         SCRIPT,
     ]
+    # input_texts = [
+    #     "Okay well it's kind of working. Just missing the last sentence right? Not any other sentences? test 123"
+    # ]
 
     reference_text = "".join(input_texts).replace("\n", " ")
 

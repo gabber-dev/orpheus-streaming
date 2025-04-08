@@ -4,7 +4,7 @@ from sentence_tokenizer import SentenceSplitter, merge_sentences
 
 
 @pytest.mark.asyncio
-async def test_session_cleanup():
+async def test_splitting():
     splitter = SentenceSplitter()
 
     sentences = splitter.push("Hello world")
@@ -20,6 +20,16 @@ async def test_session_cleanup():
     splitter.push("<foo>partial sentence")
     sentences = splitter.eos()
     assert sentences[0] == "<foo>partial sentence</foo>"
+
+
+@pytest.mark.asyncio
+async def test_foo():
+    splitter = SentenceSplitter()
+    sentences = splitter.push(
+        "ok well it's kind of working. Just missing the last sentence right? Not any other sentences? test 12"
+    )
+    eos_sentence = splitter.eos()
+    assert eos_sentence[0] == "test 12"
 
 
 @pytest.mark.asyncio
