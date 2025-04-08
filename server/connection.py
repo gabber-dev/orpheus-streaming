@@ -105,7 +105,6 @@ class WebsocketConnection:
                 config=self._config, ws=self._ws, start_msg=original, model=self._model
             )
             await self._health.add_session()
-            self._sessions[original.session] = ws_sess
             t = asyncio.create_task(
                 self._run_session(id=original.session, ws_sess=ws_sess)
             )
@@ -130,17 +129,22 @@ class WebsocketConnection:
             proxy=self._proxy,
             destination_candidates=destination_candidates,
         )
-        self._sessions[original.session] = ws_sess
         t = asyncio.create_task(ws_sess.run())
         self._session_run_tasks.add(t)
         t.add_done_callback(lambda _: self._session_run_tasks.remove(t))
 
     async def _run_session(self, *, id: str, ws_sess: "WebsocketSession"):
-        logging.info(f"Running session: {id}")
-        await ws_sess.run()
-        await self._health.remove_session()
+        self._sessions[id] = ws_sess
+        await self._health.add_session()
+        try:
+            logging.info(f"Running session: {id}")
+            await ws_sess.run()
+            logging.info(f"Session complete: {id}")
+        except Exception as e:
+            logging.error(f"Error running session {id}", exc_info=e)
+            await ws_sess.close()
         self._sessions.pop(id, None)
-        logging.info(f"Session complete: {id}")
+        await self._health.remove_session()
 
     async def wait_for_complete(self):
         await self._receive_task
