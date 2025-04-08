@@ -2,7 +2,6 @@ import asyncio
 from datetime import datetime
 import logging
 import time
-from typing import Awaitable, Callable
 
 from aiohttp import web
 from google.protobuf.json_format import Parse, MessageToDict

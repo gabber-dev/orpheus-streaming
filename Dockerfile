@@ -25,6 +25,10 @@ ENV PUBLIC_LISTEN_IP="0.0.0.0" \
 # Ensure the model directory exists
 RUN mkdir -p /app/data/model
 
+RUN python -m pip install nltk
+RUN python -m nltk.downloader punkt
+RUN python -m nltk.downloader punkt_tab
+
 # Run the application
 CMD ["python", "cli.py", "server", \
     "--public_listen_ip", "${PUBLIC_LISTEN_IP}", \
