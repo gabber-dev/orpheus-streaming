@@ -50,7 +50,7 @@ class WebsocketConnection:
     async def receive_loop(self):
         try:
             async for msg in self._ws:
-                print("NEIL received message", msg)
+                logging.debug(f"Received message: {msg}")
                 proto_msg = SendMessage.FromString(msg.data)
                 if proto_msg.HasField("start_session"):
                     await self._handle_start_session(original=proto_msg)
@@ -67,6 +67,8 @@ class WebsocketConnection:
                     continue
 
                 await ws_sess.handle_message(proto_msg)
+            logging.info("WebSocket closed")
+
         except NoCapacityError as e:
             logging.error(f"NEIL No capacity: {e}")
             await self._ws.send_bytes(
@@ -87,9 +89,12 @@ class WebsocketConnection:
             logging.error(f"Error handling message: {e}")
             await self._ws.close()
 
-    async def _session_complete(self, task: asyncio.Task):
-        await task
-        await self._health.remove_session()
+        try:
+            for session in self._sessions.values():
+                await session.close()
+
+        except Exception as e:
+            logging.error(f"Error closing sessions: {e}")
 
     async def _handle_start_session(self, *, original: SendMessage):
         logging.info(f"Creating session {original.session}")
@@ -134,6 +139,7 @@ class WebsocketConnection:
         logging.info(f"Running session: {id}")
         await ws_sess.run()
         await self._health.remove_session()
+        self._sessions.pop(id, None)
         logging.info(f"Session complete: {id}")
 
     async def wait_for_complete(self):
@@ -155,6 +161,10 @@ class WebsocketSession(ABC):
 
     @abstractmethod
     async def run(self):
+        pass
+
+    @abstractmethod
+    async def close(self):
         pass
 
 
@@ -272,6 +282,10 @@ class LocalWebsocketSession(WebsocketSession):
 
             await asyncio.sleep(0.25)
 
+    async def close(self):
+        self._closed = True
+        self._input_queue.put_nowait(None)
+
 
 class RemoteWebsocketSession(WebsocketSession):
     def __init__(
@@ -352,6 +366,11 @@ class RemoteWebsocketSession(WebsocketSession):
             await self._proxy_handle.send_message(message=msg)
 
         await receive_task
+
+    async def close(self):
+        if self._proxy_handle is not None:
+            self._input_queue.put_nowait(None)
+            await self._ws.close()
 
 
 class ProxyConnections:

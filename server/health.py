@@ -127,7 +127,6 @@ class ControllerHealth(Health):
 
     async def _report_status_loop(self):
         while not self._closed:
-            logging.info("Updating health status")
             await self._update_status()
             await asyncio.sleep(self._update_interval)
 
