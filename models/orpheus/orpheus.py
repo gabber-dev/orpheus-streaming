@@ -1,22 +1,25 @@
 import asyncio
+import logging
+import time
+import uuid
+from dataclasses import dataclass
+from enum import Enum
+
+from transformers import AutoTokenizer, PreTrainedTokenizerBase
 from vllm import (
-    AsyncLLMEngine,
     AsyncEngineArgs,
+    AsyncLLMEngine,
     SamplingParams,
     TokensPrompt,
 )
 from vllm.sampling_params import RequestOutputKind
-from transformers import AutoTokenizer, PreTrainedTokenizerBase
-import uuid
-from dataclasses import dataclass
-from .decoder import Decoder
-from enum import Enum
-import time
+
+from ..base import BaseModel, BaseSessionHandle
 from .constants import (
     SNAC_TOKENS_PER_SECOND,
 )
+from .decoder import Decoder
 from .prompt_window import PromptWindow, PromptWindowInference
-from ..base import BaseModel, BaseSessionHandle
 
 
 class OrpheusModel(BaseModel):
@@ -219,19 +222,25 @@ class InferenceJob:
         decoder_task = asyncio.create_task(decode())
         token_count = 0
         start_time = time.time()
+        first_token_time = time.time()
+        first_token = False
         async for result in self._engine.generate(
             request_id=self.req_id,
             prompt=tp,
             sampling_params=sampling_params,
         ):
             for token in result.outputs[0].token_ids:
+                if not first_token:
+                    first_token = True
+                    first_token_time = time.time()
+                    logging.info("TTFT: %d", time.time() - start_time)
                 token_count += 1
                 if decoder.push_token(token):
                     self._token_queue.put_nowait(token)
                     self._audio_tokens.append(token)
 
         self._token_queue.put_nowait(None)
-        print("NEIL tps", token_count / (time.time() - start_time))
+        logging.info("TPS: %d", token_count / (time.time() - first_token_time))
 
         decoder.eos()
         await decoder_task
