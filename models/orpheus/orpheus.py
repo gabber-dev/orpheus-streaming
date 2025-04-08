@@ -233,7 +233,7 @@ class InferenceJob:
                 if not first_token:
                     first_token = True
                     first_token_time = time.time()
-                    logging.info("TTFT: %d", time.time() - start_time)
+                    logging.info("TTFT: %0.3f", time.time() - start_time)
                 token_count += 1
                 if decoder.push_token(token):
                     self._token_queue.put_nowait(token)
