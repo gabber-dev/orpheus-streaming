@@ -37,7 +37,7 @@ class OrpheusModel(BaseModel):
             model=self._model_directory,
             max_model_len=8192,
             gpu_memory_utilization=0.8,
-            enforce_eager=True,
+            enforce_eager=False,  # Startup time suffers with this false so for local development set to true to improve iteration
         )
         return AsyncLLMEngine.from_engine_args(engine_args)
 
