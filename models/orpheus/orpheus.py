@@ -20,6 +20,7 @@ from .constants import (
 )
 from .decoder import Decoder
 from .prompt_window import PromptWindow, PromptWindowInference
+from .silence_remover import SilenceRemover
 
 
 class OrpheusModel(BaseModel):
@@ -38,9 +39,8 @@ class OrpheusModel(BaseModel):
             max_model_len=4096,
             gpu_memory_utilization=0.8,
             enforce_eager=False,  # Startup time suffers with this false so for local development set to true to improve iteration
-            # enforce_eager=True,  # Startup time suffers with this false so for local development set to true to improve iteration
             disable_async_output_proc=True,
-            skip_tokenizer_init=True,
+            # skip_tokenizer_init=True,
         )
         return AsyncLLMEngine.from_engine_args(engine_args)
 
@@ -94,6 +94,7 @@ class SessionHandle(BaseSessionHandle):
         )
         self._running_jobs = set[InferenceJob]()
         self._closed = False
+        self._silence_remover = SilenceRemover()
 
     async def run(self):
         index = -1
@@ -150,7 +151,9 @@ class SessionHandle(BaseSessionHandle):
     async def _inference_task(self, job: "InferenceJob"):
         async def audio_task():
             async for audio in job.output_audio_stream():
-                self._output_queue.put_nowait(audio)
+                filtered_audio = self._silence_remover.push_bytes(audio)
+                if len(filtered_audio) > 0:
+                    self._output_queue.put_nowait(filtered_audio)
 
         async def token_task():
             token_count = 0
