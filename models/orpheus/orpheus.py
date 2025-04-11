@@ -35,9 +35,12 @@ class OrpheusModel(BaseModel):
     def _setup_engine(self):
         engine_args = AsyncEngineArgs(
             model=self._model_directory,
-            max_model_len=8192,
+            max_model_len=4096,
             gpu_memory_utilization=0.8,
             enforce_eager=False,  # Startup time suffers with this false so for local development set to true to improve iteration
+            # enforce_eager=True,  # Startup time suffers with this false so for local development set to true to improve iteration
+            disable_async_output_proc=True,
+            skip_tokenizer_init=True,
         )
         return AsyncLLMEngine.from_engine_args(engine_args)
 
