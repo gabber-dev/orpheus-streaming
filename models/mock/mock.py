@@ -49,6 +49,9 @@ class MockSessionHandle(BaseSessionHandle):
     def eos(self):
         self._input_queue.put_nowait(None)
 
+    def cancel(self):
+        self._input_queue.put_nowait(None)
+
     async def wait_for_complete(self):
         await self._run_task
 

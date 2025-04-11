@@ -28,6 +28,10 @@ class BaseSessionHandle(ABC):
         pass
 
     @abstractmethod
+    def cancel(self):
+        pass
+
+    @abstractmethod
     def __aiter__(self) -> AsyncIterator[bytes]:
         pass
 

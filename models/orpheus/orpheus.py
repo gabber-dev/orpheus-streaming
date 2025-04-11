@@ -89,8 +89,8 @@ class SessionHandle(BaseSessionHandle):
             voice=voice,
             previous_audio_tokens=max_audio_context_tokens,
         )
-        self._running_inference_tasks: list[asyncio.Task] = []
-        self._running_cache_tasks: list[asyncio.Task] = []
+        self._running_jobs = set[InferenceJob]()
+        self._closed = False
 
     async def run(self):
         index = -1
@@ -100,7 +100,8 @@ class SessionHandle(BaseSessionHandle):
 
         inference_task = asyncio.create_task(noop())
         inference_job: InferenceJob = NOOPInferenceJob()
-        while True:
+        self._running_jobs.add(inference_job)
+        while not self._closed:
             prompt = await self._input_queue.get()
             index += 1
             if prompt is None:
@@ -116,18 +117,23 @@ class SessionHandle(BaseSessionHandle):
             if inference is None:
                 continue
 
+            self._running_jobs.remove(inference_job)
             inference_job = await self._start_inference(inference)
+            self._running_jobs.add(inference_job)
             inference_task = asyncio.create_task(self._inference_task(inference_job))
 
         await inference_task
         self._window.eos()
         inference = self._window.get_next_inference()
-        while inference is not None:
+        while inference is not None and not self._closed:
+            self._running_jobs.remove(inference_job)
             inference_job = await self._start_inference(inference)
+            self._running_jobs.add(inference_job)
             inference_task = asyncio.create_task(self._inference_task(inference_job))
             await inference_task
             inference = self._window.get_next_inference()
 
+        logging.info("Orpheus session %s finished", self._identifier)
         self._output_queue.put_nowait(None)
 
     async def _start_inference(self, prompt: PromptWindowInference):
@@ -158,6 +164,13 @@ class SessionHandle(BaseSessionHandle):
 
     def push(self, text: str):
         self._input_queue.put_nowait(text)
+
+    def cancel(self):
+        logging.info("Cancelling orpheus session %s", self._identifier)
+        self._closed = True
+        self._input_queue.put_nowait(None)
+        for job in self._running_jobs:
+            job.cancel()
 
     async def wait_for_complete(self):
         await self._run_task
@@ -190,11 +203,6 @@ class InferenceJob:
         self.finished = False
         self._run_task = asyncio.create_task(self.run())
         self._audio_tokens: list[int] = []
-        # The input to this job will be the context on the next so we can optimize
-        # by prewarming the cache with the next context. In the future we can be
-        # smarter and try to prewarm audio tokens as well but that's difficult
-        # at the moment because we don't know where the cutoff will be.
-        self._prewarm_kv_cache_task = asyncio.create_task(self.prewarm_kv_cache())
         self._kv_cache_req_id = str(uuid.uuid4())
 
     def cancel(self):
@@ -246,33 +254,6 @@ class InferenceJob:
         decoder.eos()
         await decoder_task
         self._finished = True
-        self._prewarm_kv_cache_task = asyncio.create_task(
-            self._engine.abort(self._kv_cache_req_id)
-        )
-
-    async def prewarm_kv_cache(self):
-        prompt = PromptWindowInference(
-            context_text="",
-            context_audio=[],
-            new_text=self.input.new_text,
-            tokenizer=self.input.tokenizer,
-            voice=self.input.voice,
-        )
-        tp = TokensPrompt(prompt_token_ids=prompt.tokenize())
-        async for _ in self._engine.generate(
-            request_id=self._kv_cache_req_id,
-            prompt=tp,
-            sampling_params=SamplingParams(
-                temperature=0.6,
-                top_p=0.8,
-                min_tokens=1,
-                max_tokens=1,
-                stop_token_ids=[128258],
-                repetition_penalty=1.1,
-                output_kind=RequestOutputKind.DELTA,
-            ),
-        ):
-            continue
 
     async def output_token_stream(self):
         while True:

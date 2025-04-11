@@ -77,6 +77,9 @@ class WebsocketConnection:
 
                 await ws_sess.handle_message(proto_msg)
             logging.info("WebSocket closed")
+            for s in self._sessions:
+                logging.info(f"Cancelling session {s}")
+                self._sessions[s].cancel()
         except UnknownServerError as e:
             logging.error(f"Unknown server: {e}")
             await self._ws.send_bytes(
@@ -145,6 +148,7 @@ class WebsocketConnection:
             logging.info(f"Session complete: {id}")
         except Exception as e:
             logging.error(f"Error running session {id}", exc_info=e)
+            ws_sess.cancel()
             await ws_sess.close()
         self._sessions.pop(id, None)
         await self._health.remove_session()
@@ -173,6 +177,10 @@ class WebsocketSession(ABC):
 
     @abstractmethod
     async def close(self):
+        pass
+
+    @abstractmethod
+    def cancel(self):
         pass
 
 
@@ -233,29 +241,34 @@ class LocalWebsocketSession(WebsocketSession):
             logging.info(f"Session {self._start_msg.session} EOS")
             self._session_handle.eos()
 
-        send_task = asyncio.create_task(send_loop())
-        async for msg in self._session_handle:
+        try:
+            send_task = asyncio.create_task(send_loop())
+            async for msg in self._session_handle:
+                self._last_output = time.time()
+                audio_msg = ReceiveMessage(
+                    session=self._start_msg.session,
+                    audio_data=AudioData(
+                        audio=msg,
+                        sample_rate=24000,
+                        channel_count=1,
+                        audio_type=AUDIOTYPE_PCM16LE,
+                    ),
+                )
+                if not self._closed:
+                    await self._ws.send_bytes(audio_msg.SerializeToString())
+
             self._last_output = time.time()
             audio_msg = ReceiveMessage(
                 session=self._start_msg.session,
-                audio_data=AudioData(
-                    audio=msg,
-                    sample_rate=24000,
-                    channel_count=1,
-                    audio_type=AUDIOTYPE_PCM16LE,
-                ),
+                finished=Finished(),
             )
             if not self._closed:
                 await self._ws.send_bytes(audio_msg.SerializeToString())
+            await send_task
+        except Exception as e:
+            logging.error(f"Error in session {self._start_msg.session}", exc_info=e)
+            self.cancel()
 
-        self._last_output = time.time()
-        audio_msg = ReceiveMessage(
-            session=self._start_msg.session,
-            finished=Finished(),
-        )
-        if not self._closed:
-            await self._ws.send_bytes(audio_msg.SerializeToString())
-        await send_task
         self._closed = True
 
     async def inactivity_loop(self):
@@ -265,7 +278,10 @@ class LocalWebsocketSession(WebsocketSession):
                 current_time - self._last_input > self._config.session_input_timeout
                 and not self._eos
             ):
+                logging.warning(f"Input timeout: {self._start_msg.session}")
                 self._closed = True
+                if self._session_handle is not None:
+                    self._session_handle.cancel()
                 if not self._ws._closed:
                     await self._ws.send_bytes(
                         ReceiveMessage(
@@ -274,11 +290,14 @@ class LocalWebsocketSession(WebsocketSession):
                         ).SerializeToString()
                     )
                 self._input_queue.put_nowait(None)
-                logging.warning(f"Input timeout: {self._start_msg.session}")
+
                 break
 
             if current_time - self._last_output > self._config.session_output_timeout:
+                logging.warning(f"Output timeout: {self._start_msg.session}")
                 self._closed = True
+                if self._session_handle is not None:
+                    self._session_handle.cancel()
                 if not self._ws._closed:
                     await self._ws.send_bytes(
                         ReceiveMessage(
@@ -287,7 +306,7 @@ class LocalWebsocketSession(WebsocketSession):
                         ).SerializeToString()
                     )
                 self._input_queue.put_nowait(None)
-                logging.warning(f"Output timeout: {self._start_msg.session}")
+
                 break
 
             await asyncio.sleep(0.25)
@@ -296,6 +315,11 @@ class LocalWebsocketSession(WebsocketSession):
         logging.info(f"Closing session {self._start_msg.session}")
         self._closed = True
         self._input_queue.put_nowait(None)
+
+    def cancel(self):
+        logging.info(f"Cancelling local session {self._start_msg.session}")
+        if self._session_handle is not None:
+            self._session_handle.cancel()
 
 
 class RemoteWebsocketSession(WebsocketSession):
@@ -383,6 +407,9 @@ class RemoteWebsocketSession(WebsocketSession):
         self._input_queue.put_nowait(None)
         if self._proxy_handle is not None:
             self._proxy_handle._msg_queue.put_nowait(None)
+
+    def cancel(self):
+        logging.info(f"TODO Cancelling remote session {self._start_msg.session}")
 
 
 class ProxyConnections:
